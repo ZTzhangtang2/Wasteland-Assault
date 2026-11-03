@@ -104,3 +104,8 @@
 ---
 
 **建议横屏游玩。**
+
+---
+
+**特别说明**
+本游戏底层框架代码原作者为GitHub的创作者StarKnightt的仓库operation-ironhold
