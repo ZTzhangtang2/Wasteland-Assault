@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="format-detection" content="telephone=no">
 <title>废土强袭（Wasteland Assault） — 仓库区</title>
-<meta name="description" content="十名敌兵据守集装箱堆场，你只有三分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
+<meta name="description" content="十名敌兵据守集装箱堆场，你只有七分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
 <meta name="author" content="Prasenjit">
 <meta name="theme-color" content="#0a0c0e">
 <link rel="canonical" href="https://starknightt.github.io/operation-ironhold/">
@@ -17,7 +17,7 @@
 <meta property="og:site_name" content="废土强袭（Wasteland Assault）">
 <meta property="og:url" content="https://starknightt.github.io/operation-ironhold/">
 <meta property="og:title" content="废土强袭（Wasteland Assault） — 一个 HTML 文件里的第一人称射击">
-<meta property="og:description" content="十名敌兵据守集装箱堆场，你只有三分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
+<meta property="og:description" content="十名敌兵据守集装箱堆场，你只有七分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
 <meta property="og:image" content="https://starknightt.github.io/operation-ironhold/og.jpg">
 <meta property="og:image:secure_url" content="https://starknightt.github.io/operation-ironhold/og.jpg">
 <meta property="og:image:type" content="image/jpeg">
@@ -29,7 +29,7 @@
 <meta name="twitter:site" content="@Star_Knight12">
 <meta name="twitter:creator" content="@Star_Knight12">
 <meta name="twitter:title" content="废土强袭（Wasteland Assault） — 一个 HTML 文件里的第一人称射击">
-<meta name="twitter:description" content="十名敌兵据守集装箱堆场，你只有三分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
+<meta name="twitter:description" content="十名敌兵据守集装箱堆场，你只有七分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
 <meta name="twitter:image" content="https://starknightt.github.io/operation-ironhold/og.jpg">
 <meta name="twitter:image:alt" content="第一人称视角望向集装箱堆场，M4 卡宾枪正在向敌兵开火，HUD 上有小地图、倒计时与弹药计数。">
 <style>
@@ -46,6 +46,9 @@
      HUD 筹码，桌面上也一样干脆 —— 本来也没人想要那块灰蓝 */
   *{-webkit-tap-highlight-color:transparent;}
   html,body{width:100%;height:100%;overflow:hidden;background:#05070a;}
+  /* 全屏元素就是 <html>：显式铺满，别让旧视口高度在底部留一条黑边 */
+  html:fullscreen,html:-webkit-full-screen{width:100%;height:100%;background:#05070a;}
+  html:fullscreen body,html:-webkit-full-screen body{width:100%;height:100%;}
   body{
     font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     color:var(--hud);
@@ -63,7 +66,9 @@
      #c 和 #hud 都是 inset:0 的定位元素，DOM 里 #c 在前、又都是 z-index:auto，
      照理 HUD 在上面 —— 但 3D 画布铺满整屏时有些浏览器会把它推到同级之上，
      于是 HUD 里能点的小地图/弹药栏全被挡掉。显式给个层级，别再赌。 */
-  #c{z-index:0;}
+  /* HUD 整层 pointer-events:none，点空处会穿透到这张 3D 画布。禁掉它上面的
+     浏览器手势，连点开火才不会被当成双击 / 捏合缩放（整个界面缩一下）。 */
+  #c{z-index:0;touch-action:none;}
   #hud{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .35s ease;z-index:1;}
   #hud.on{opacity:1;}
 
@@ -934,7 +939,7 @@
   <div class="mp-card">
     <div class="mp-card-h"><span>单人游戏 — 选择模式</span><button class="xbtn" id="spClose" aria-label="关闭">✕</button></div>
     <div class="mp-modes" id="spModes">
-      <button class="mp-mode act" data-mode="mission">突袭仓库区<small>10 名敌兵 · 3 分钟 · 步枪 + 手枪 + 手雷</small></button>
+      <button class="mp-mode act" data-mode="mission">突袭仓库区<small>10 名敌兵 · 7 分钟 · 步枪 + 手枪 + 手雷</small></button>
       <button class="mp-mode" data-mode="survival">波次生存<small>无尽波次 · 开局仅一把手枪 · 商店买枪</small></button>
     </div>
     <div class="mp-note" id="spNote">波次生存没有倒计时，敌人会一波比一波强；手雷和枪械都要在商店（暂停菜单 → 补给站）购买。</div>
@@ -978,7 +983,7 @@
       </div>
       <div class="mp-k mp-k-mode" style="margin-top:14px">模式</div>
       <div class="mp-modes" id="mpModes">
-        <button class="mp-mode act" data-mode="coop">合作强袭<small>10 名敌兵 · 3 分钟清场 · 2-5 人</small></button>
+        <button class="mp-mode act" data-mode="coop">合作强袭<small>10 名敌兵 · 7 分钟清场 · 2-5 人</small></button>
         <button class="mp-mode" data-mode="pvp">1v1 死斗<small>15 杀或 5 分钟 · 四枪全解锁 · 无限弹药</small></button>
         <button class="mp-mode" data-mode="survival">波次生存<small>无尽波次 · 最多 5 人协同防守</small></button>
       </div>
@@ -1026,6 +1031,10 @@
 <div id="cfgPanel" class="hide">
   <div class="mp-card">
     <div class="mp-card-h"><span>设置</span><button class="xbtn" id="cfgClose" aria-label="关闭">✕</button></div>
+
+    <div class="cfg-sep">显示</div>
+    <div class="cfg-row"><label><input type="checkbox" id="cfgAutoFs"> <span>进入游戏自动全屏</span></label></div>
+    <div class="mp-note" id="cfgFsNote">开局时用掉这次点击向浏览器申请全屏；浏览器不支持时自动跳过。按 Esc / 系统返回退出后，本局不会再自动切回。</div>
 
     <div class="cfg-sep">视角</div>
     <div class="mp-k">视角灵敏度 <b id="cfgSensVal" class="kval">1.00×</b></div>
@@ -1265,6 +1274,28 @@ const IS_TOUCH = FORCE_TOUCH
   : !!(window.matchMedia && matchMedia('(hover:none) and (pointer:coarse)').matches
        && navigator.maxTouchPoints > 0);
 if (IS_TOUCH) document.body.classList.add('touch');
+
+/* 触屏没有鼠标压枪：每发开火把 FOV 往上踢一点再衰减，画面就一涨一缩，
+   看起来像「整个界面稍稍缩小」，再叠上相机 shake 就成了不规律抖动。
+   手机端把视野角踢动压到几乎看不见、抖动减半；抬枪后坐力和枪模反冲照旧。 */
+const TOUCH_FOV_KICK = IS_TOUCH ? 0.12 : 1;
+const TOUCH_SHAKE    = IS_TOUCH ? 0.5  : 1;
+
+/* 连点开火容易被移动浏览器读成双击 / 捏合缩放，视觉视口一缩一弹，整个界面
+   就跟着抖一下。游戏里根本不需要页面缩放：多指手势、iOS gesture* 和双击
+   缩放一律挡掉；单指滚动留给设置 / 商店这些能滚的面板，全屏地图的双指捏合
+   是 JS 自己算的，也放行。 */
+if (IS_TOUCH) (function lockPageZoom(){
+  const stop = e => { if (e.cancelable) e.preventDefault(); };
+  for (const type of ['gesturestart','gesturechange','gestureend','dblclick'])
+    document.addEventListener(type, stop, { passive:false });
+  document.addEventListener('touchmove', e=>{
+    if (e.touches.length < 2 || !e.cancelable) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('#mmCanvasWrap')) return;
+    e.preventDefault();
+  }, { passive:false });
+})();
 
 /* ------------------------------- helpers -------------------------------- */
 /* ------------------------- 确定性世界种子 -------------------------------
@@ -5556,6 +5587,24 @@ function spawnEnemies(count, opts){
   const hpMul = opts.hpMul || 1, dmgMul = opts.dmgMul || 1;
   const from = opts.from || SPAWN;                 // 尽量刷在离这个人远的一端
   const base = opts.append ? enemies.length : 0;
+
+  /* ------------------------------------------------------------------
+     大地图（灰蓝街区 / 灰线城市，500 米见方）不能一上来就把人铺满全图：
+     波次生存第 1 波只有两三个人，散在两百米外就变成「找人」而不是「打人」。
+     进度 p 由「波次」和「本局累计刷出的敌兵数」一起推：越到后期人越多，
+     才逐条放开到更远的巡逻线、把落点推远、把同波间距拉开。
+     HALF 在文件前段就声明了，初始化时（那时 MAP 还没建）也拿得到。 */
+  const bigMap = HALF > 60;
+  const wave = opts.wave | 0;
+  const p = clamp(Math.max((wave - 1) / 8, (base + count - 2) / 20), 0, 1);
+  const routesN = ROUTES.length || 1;
+  const pool = bigMap
+    ? Math.max(1, Math.min(routesN, Math.round(2 + p * 8)))
+    : Math.min(10, routesN);
+  /* 目标接敌距离：前期贴着小队，后期才往地图深处放 */
+  const wantD = 26 + p * 95;
+  const jitter = 2.0 + p * 4.5;
+
   for (let k=0;k<count;k++){
     const i = (base + k) % 10;
     const parts = buildEnemyModel();
@@ -5577,21 +5626,48 @@ function spawnEnemies(count, opts){
        there for three minutes. Snap every leg to open floor at load. */
     /* the upper floor is reachable by ramp, which a flat flood fill can't see,
        so only ground routes get the reachability constraint */
-    const snap = snappedRoute(i);
+    const ri = bigMap ? (base + k) % pool : (i % routesN);
+    const snap = snappedRoute(ri);
     const { route, floorY, upper } = snap;
     /* two routes loop straight past the player spawn — start those enemies on
        the far leg so nobody opens fire before you have your bearings */
     let wpStart = 0;
-    for (let k2=0;k2<route.length;k2++){
-      const d = Math.hypot(route[k2][0]-from.x, route[k2][1]-from.z);
-      const dBest = Math.hypot(route[wpStart][0]-from.x, route[wpStart][1]-from.z);
-      if (d > dBest) wpStart = k2;
+    if (bigMap){
+      /* 城市路线一条能横跨上百米，取「最远那个航点」等于把人扔到地图另一头。
+         改成挑离小队最接近目标接敌距离的航点：前期就近接火，后期才放远。 */
+      let best = Infinity;
+      for (let k2=0;k2<route.length;k2++){
+        const d = Math.abs(Math.hypot(route[k2][0]-from.x, route[k2][1]-from.z) - wantD);
+        if (d < best){ best = d; wpStart = k2; }
+      }
+    } else {
+      for (let k2=0;k2<route.length;k2++){
+        const d = Math.hypot(route[k2][0]-from.x, route[k2][1]-from.z);
+        const dBest = Math.hypot(route[wpStart][0]-from.x, route[wpStart][1]-from.z);
+        if (d > dBest) wpStart = k2;
+      }
     }
     let start = route[wpStart];
-    /* 同一波里两个人挤同一条路线时错开落点，免得模型叠在一起 */
-    if (opts.spread){
-      const jx = start[0] + rand(-3.2,3.2), jz = start[1] + rand(-3.2,3.2);
-      start = nearestFree(jx, jz, 0.5, 1.7, 4, floorY);
+    /* 同一波里两个人挤同一条路线时错开落点，免得模型叠在一起。
+       大地图用确定性的黄金角散布：前期抖动小（扎堆）、后期抖动大（散开），
+       并且不再靠 rand()，房主和客机算出来的落点完全一样。 */
+    if (bigMap || opts.spread){
+      const j = base + k;
+      let jx, jz;
+      if (bigMap){
+        const a = j * 2.399963229728653;
+        const rr = jitter * (0.6 + 0.4 * ((j % 3) / 2));
+        jx = start[0] + Math.cos(a)*rr;
+        jz = start[1] + Math.sin(a)*rr;
+      } else {
+        jx = start[0] + rand(-3.2,3.2);
+        jz = start[1] + rand(-3.2,3.2);
+      }
+      /* 地面路线用可达性吸附，别把抖完的人塞进一个走不出来的盒子里 ——
+         波次模式只要有一个敌人卡死，整波就永远清不掉。 */
+      start = (bigMap && !upper)
+        ? nearestReachable(jx, jz, 0.5, 1.7, 8)
+        : nearestFree(jx, jz, 0.5, 1.7, 4, floorY);
     }
     obj.position.set(start[0], floorY, start[1]);
     scene.add(obj);
@@ -5663,7 +5739,7 @@ const player = {
 };
 const G = {
   running:false, over:false, paused:false, started:false,
-  time:180, kills:0, headshots:0, shots:0, hits:0, elapsed:0,
+  time:420, kills:0, headshots:0, shots:0, hits:0, elapsed:0,
   dmgFlash:0, lowPulse:0, hbTimer:0, killFlash:0,
   grace:GRACE_TIME,         // hostiles hold fire while you get your bearings
   /* 'mission' | 'survival' | 'pvp' —— 死斗仍由 NET.pvp 驱动，这里只做分流 */
@@ -5678,7 +5754,8 @@ const G = {
 const SET_STORE = 'ih_set';
 const SET = {
   gyro:false, gyroYaw:true, gyroPitch:true, gyroSensY:1, gyroSensP:1,
-  gyroInvY:false, gyroInvP:false, fireAds:false, padScale:1
+  gyroInvY:false, gyroInvP:false, fireAds:false, padScale:1,
+  autoFullscreen:true
 };
 try { Object.assign(SET, JSON.parse(localStorage.getItem(SET_STORE) || '{}')); } catch(_){}
 function saveSet(){ try { localStorage.setItem(SET_STORE, JSON.stringify(SET)); } catch(_){} }
@@ -6181,11 +6258,18 @@ function updateAmmoUI(){
     s.classList.toggle('act', act);
   });
 }
+let hitmarkRAF = 0;
 function showHitmark(kill){
-  UI.hitmark.classList.remove('show','kill');
-  void UI.hitmark.offsetWidth;
-  if (kill) UI.hitmark.classList.add('kill');
-  UI.hitmark.classList.add('show');
+  const el = UI.hitmark;
+  el.classList.remove('show','kill');
+  /* 旧写法用 void offsetWidth 强制同步布局来重启动画。命中这一帧粒子和后
+     处理正忙，手机上一次 reflow 就够画面顿一下。挪到下一帧再挂 class，
+     连命中只排一个回调，hitmark 照常跳出。 */
+  cancelAnimationFrame(hitmarkRAF);
+  hitmarkRAF = requestAnimationFrame(()=>{
+    if (kill) el.classList.add('kill');
+    el.classList.add('show');
+  });
 }
 const HEADSHOT_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.5" stroke="#ffb340" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="#ffb340"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" stroke="#ffb340" stroke-width="2"/></svg>`;
 const SKULL_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="#dfe6ec" opacity=".8"><path d="M12 2C7 2 3.5 5.4 3.5 10c0 2.6 1.2 4.6 3 5.9V19a2 2 0 002 2h1v-3h1.2v3h2.6v-3H14.5v3h1a2 2 0 002-2v-3.1c1.8-1.3 3-3.3 3-5.9C20.5 5.4 17 2 12 2zM8.6 12.2a1.9 1.9 0 110-3.8 1.9 1.9 0 010 3.8zm6.8 0a1.9 1.9 0 110-3.8 1.9 1.9 0 010 3.8z"/></svg>`;
@@ -6434,7 +6518,7 @@ function drawMinimap(){
       const r = tm.pos;
       ctx.save();
       ctx.translate(r.x, r.z);
-      ctx.rotate(tm.yaw || 0);
+      ctx.rotate(-(tm.yaw || 0));   /* canvas Y 轴朝下，取负才对应世界朝向 (-sin,-cos) */
       ctx.fillStyle = 'rgba(80,220,255,.92)';
       ctx.beginPath(); ctx.moveTo(0,-2.6); ctx.lineTo(1.9,1.8); ctx.lineTo(-1.9,1.8);
       ctx.closePath(); ctx.fill();
@@ -6820,7 +6904,7 @@ function mmapDraw(){
       if (Math.abs(r.x - MMAP.cx) > halfDiag || Math.abs(r.z - MMAP.cz) > halfDiag) continue;
       ctx.save();
       ctx.translate(r.x, r.z);
-      ctx.rotate(tm.yaw || 0);
+      ctx.rotate(-(tm.yaw || 0));   /* canvas Y 轴朝下，取负才对应世界朝向 (-sin,-cos) */
       const a = dot(1.6);
       ctx.fillStyle = 'rgba(80,220,255,.95)';
       ctx.beginPath(); ctx.moveTo(0, -a); ctx.lineTo(a * 0.7, a * 0.72); ctx.lineTo(-a * 0.7, a * 0.72);
@@ -6829,10 +6913,15 @@ function mmapDraw(){
     }
   }
 
-  /* 自己 */
+  /* 自己 —— 上面那层世界变换已经按 yaw 把地图转过了（面朝方向朝上）。
+     箭头和视锥得在这里反向转回来，才永远指向屏幕正上方；否则它们画的是
+     世界 -Z（正北），会跟着建筑一起转，看上去就是「整张图连人一起转」、
+     人物相对建筑物的朝向从来没变过。角落雷达是在世界变换之外画箭头的，
+     这里补上等价的抵消，两处才一致。 */
   const selfPx = 5;                      /* 屏幕像素，缩放时不变大小 */
   ctx.save();
   ctx.translate(px, pz);
+  ctx.rotate(-yaw);
   ctx.fillStyle = 'rgba(255,179,64,.16)';
   ctx.beginPath(); ctx.moveTo(0, 0);
   ctx.arc(0, 0, 34 / s, -PI / 2 - 0.62, -PI / 2 + 0.62); ctx.closePath(); ctx.fill();
@@ -7144,8 +7233,32 @@ addEventListener('mousemove', e=>{
   mouseDX += e.movementX || 0;
   mouseDY += e.movementY || 0;
 });
+/* 触屏点 HUD / 面板 / 虚拟按键时，浏览器会在 pointerup 之后补发一整套
+   兼容鼠标事件 mousedown → mouseup → click。它们冒泡到 window，过去会被
+   当成扣扳机：点小地图放大、点全屏地图里的 − / + / 定位 / 关闭、点背包
+   关闭，都会顺带走火一发（clickBuf 被置成 0.12，面板清理时又没清掉）。
+   pointerdown 上的 stopPropagation 挡不住它们 —— 那是另一套事件序列。
+   桌面端同理：任何落在 UI 上的按下都不该驱动开火 / 开镜。 */
+function isUIPress(e){
+  /* 全屏地图 / 背包 / 商店都不暂停世界，G.running 仍是 true，只能靠状态挡。
+     用 typeof 兜底：bagOpen / shopOpen 在文件后面才 let 声明。 */
+  if (MMAP.open || G.paused) return true;
+  if (typeof shopOpen !== 'undefined' && shopOpen) return true;
+  if (typeof bagOpen  !== 'undefined' && bagOpen)  return true;
+  const t = e.target;
+  if (!t || typeof t.closest !== 'function') return false;
+  /* #hud 整层是 pointer-events:none，只有真正可点的 HUD 元素才会成为 target；
+     #touch 是虚拟按键层（开火由 tFire 的 pointerdown 自己处理）。剩下的 ID
+     覆盖暂停卡、主菜单、设置、联机、背包、商店、地图选择与全屏地图。 */
+  return !!t.closest(
+    'button,[role="button"],#hud,#touch,#pause,#startScreen,#endScreen,' +
+    '#spPanel,#mpPanel,#cfgPanel,#bagPanel,#shop,#mapPanel,#mapWrap'
+  );
+}
+let uiPress = false;
 addEventListener('mousedown', e=>{
-  if (!G.running || shopOpen) return;      // 点补给面板不该顺带扣扳机
+  uiPress = isUIPress(e);
+  if (!G.running || uiPress) return;       // 点 UI / 面板不该顺带扣扳机
   /* Latch the press. A click and release inside one frame — which is most
      quick taps at 140fps — used to set triggerHeld and clear it again before
      the update loop ever looked, and the shot simply never happened. The
@@ -7154,7 +7267,13 @@ addEventListener('mousedown', e=>{
   if (e.button===0){ player.triggerHeld=true; player.clickBuf=0.12; }
   if (e.button===2){ e.preventDefault(); toggleADS(); }
 });
-addEventListener('mouseup', e=>{ if (e.button===0){ player.triggerHeld=false; player.triggerReleased=true; } });
+addEventListener('mouseup', e=>{
+  if (e.button!==0) return;
+  /* 这轮按下来自 UI：连清理也跳过，免得第二根手指点按钮时把开火键
+     正在按住的 triggerHeld 清掉；桌面端拖到 UI 上松手仍走上面的正常分支。 */
+  if (uiPress){ uiPress = false; return; }
+  player.triggerHeld=false; player.triggerReleased=true;
+});
 addEventListener('wheel', e=>{
   if (!G.running) return;
   /* 只循环“有东西”的槽位：空枪槽和没有投掷物时直接跳过 */
@@ -7309,6 +7428,7 @@ $('spPanel').addEventListener('click', e=>{
 }
 $('spStart').addEventListener('click', e=>{
   e.stopPropagation(); SFX.init();
+  enterFullscreen(true);          /* 必须在这次点击里同步申请全屏 */
   $('spPanel').classList.add('hide');
   startGame(false, spMode);
 });
@@ -7319,7 +7439,7 @@ UI.pause.addEventListener('click', ()=>{
   if (performance.now() - (G.pausedAt||0) < 400) return;
   SFX.init(); if (IS_TOUCH) resumeGame(); else requestLock();
 });
-$('restartBtn').addEventListener('click', e=>{ e.stopPropagation(); restart(); });
+$('restartBtn').addEventListener('click', e=>{ e.stopPropagation(); enterFullscreen(true); restart(); });
 
 /* ---- touch pad ---------------------------------------------------------
    The pad never synthesises key events. It writes a small state object that
@@ -7541,7 +7661,9 @@ function releaseTouchHolds(){
   TOUCH.mx = TOUCH.my = 0;
   TOUCH.sprint = false; TOUCH.crouch = false; TOUCH.jump = false;
   TOUCH.stickId = TOUCH.lookId = null;
-  player.triggerHeld = false; player.triggerReleased = true;
+  /* clickBuf 是「这一下还没打出去」的缓冲：开地图 / 暂停 / 倒地时若不一起
+     清掉，0.12 秒的余量会在面板都亮起来之后自己打出一发。 */
+  player.triggerHeld = false; player.triggerReleased = true; player.clickBuf = 0;
   if (player.cooking){ releaseCook(); }
   if (!IS_TOUCH) return;
   const fire = $('tFire'), jump = $('tJump');
@@ -8970,7 +9092,7 @@ function updatePlayer(dt){
   player.eye = damp(player.eye, player.height*0.92, 16, dt);
 
   const t = perfNow*0.001;
-  const shk = player.shake;
+  const shk = player.shake * TOUCH_SHAKE;
   const sX = (Math.sin(t*57.3+player.shakeSeed)+Math.sin(t*31.1))*0.5*shk*0.030;
   const sY = (Math.sin(t*43.7+player.shakeSeed*2)+Math.sin(t*67.3))*0.5*shk*0.030;
   const sR = Math.sin(t*39.9+player.shakeSeed*3)*shk*0.016;
@@ -8997,7 +9119,7 @@ function updatePlayer(dt){
      is exact rather than doubly smoothed */
   player.fovKick = damp(player.fovKick, 0, 13, dt);
   const fovNow = lerp(fovCur, wpn.adsFov, player.adsEase)
-               + player.fovKick * (1 - player.adsEase*0.75);
+               + player.fovKick * TOUCH_FOV_KICK * (1 - player.adsEase*0.75);
   if (Math.abs(camera.fov-fovNow)>0.005){ camera.fov = fovNow; camera.updateProjectionMatrix(); }
   /* mouse feel has to scale with zoom or the sniper is unusable */
   sensScale = lerp(1, clamp(Math.tan(wpn.adsFov*PI/360)/Math.tan(BASE_FOV*PI/360), 0.18, 1), player.adsEase);
@@ -9395,7 +9517,7 @@ function resetWorldState(){
   }
   UI.feed.innerHTML='';
 
-  G.time = mode === 'pvp' ? 300 : (mode === 'survival' ? 0 : 180);
+  G.time = mode === 'pvp' ? 300 : (mode === 'survival' ? 0 : 420);
   G.kills=0; G.headshots=0; G.shots=0; G.hits=0; G.elapsed=0;
   if (mode === 'pvp'){
     G.pvpKills = 0; NET.remoteKills = 0; NET.respawnT = 0;
@@ -9418,8 +9540,58 @@ function resetWorldState(){
   { const kc = $('killCount'); if (kc) kc.textContent = '0'; }
   updateVitalsUI(); updateAmmoUI();
 }
+/* ---- 进入游戏自动全屏 ----------------------------------------------------
+   全屏 API 只认「用户手势」：单机 / 房主点开始的那一下是有效手势，所以在入口
+   按钮里同步申请；客机是被房主用网络消息拉进战场的（回调 / Promise.then），
+   那一次必然没有手势，申请会被驳回，留给进战场后的第一次真实触摸补一次。
+   iPhone Safari 根本没有页面全屏 API，检测到就静默降级，不反复重试。
+   全屏会让视口真的变大，onResize 里对地址栏抖动做的防抖必须给它开例外，
+   否则画布会停在旧高度、屏幕下方露出黑边。 */
+const FS = { pending:false, needGesture:false, userExited:false, entered:false,
+             tries:0, forceResize:false };
+function fsElement(){
+  const d = document;
+  return d.fullscreenElement || d.webkitFullscreenElement ||
+         d.mozFullScreenElement || d.msFullscreenElement || null;
+}
+function fsCapable(){
+  const el = document.documentElement, d = document;
+  const has = !!(el.requestFullscreen || el.webkitRequestFullscreen ||
+                 el.webkitRequestFullScreen || el.mozRequestFullScreen ||
+                 el.msRequestFullscreen);
+  const ok = d.fullscreenEnabled !== false && d.webkitFullscreenEnabled !== false &&
+             d.mozFullScreenEnabled !== false;
+  return has && ok;
+}
+/* fromStart = 玩家自己点「开始任务 / 开始 / 重新部署」：可以重新争取一次全屏。
+   其它调用（被动开局、下次触摸补申请）要尊重玩家刚按 Esc 退出全屏的选择。 */
+function enterFullscreen(fromStart){
+  if (SET.autoFullscreen === false || FS.pending) return;
+  if (!fromStart && FS.userExited){ FS.needGesture = false; return; }
+  if (fromStart){ FS.userExited = false; FS.tries = 0; }
+  if (fsElement()){ FS.needGesture = false; return; }
+  if (!fsCapable() || FS.tries >= 4){ FS.needGesture = false; return; }
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen ||
+             el.webkitRequestFullScreen || el.mozRequestFullScreen ||
+             el.msRequestFullscreen;
+  FS.pending = true; FS.tries++;
+  let p = null;
+  try { p = fn.call(el); } catch(_){}
+  const done = ok=>{
+    FS.pending = false;
+    FS.needGesture = (ok === false);
+    /* 全屏被驳回时不会触发 fullscreenchange，桌面端得把指针锁补回来 */
+    if (ok === false && !IS_TOUCH && G.started && !G.over && !G.paused &&
+        !document.pointerLockElement) requestLock();
+  };
+  if (p && typeof p.then === 'function') p.then(()=>done(true), ()=>done(false));
+  else setTimeout(()=>done(!!fsElement()), 600);      /* 老式无 Promise 的实现 */
+  setTimeout(()=>{ FS.pending = false; }, 1000);      /* 卡住时的兜底解锁 */
+}
 function startGame(fromNet, mode){
   /* 客机完全听房主的；单机则用入口传进来的模式 */
+  enterFullscreen(false);
   if (NET.pvp) mode = 'pvp';
   else if (!mode) mode = NET.open ? NET.mode : 'mission';
   G.mode = (mode === 'pvp' || mode === 'survival') ? mode : 'mission';
@@ -9438,8 +9610,8 @@ function startGame(fromNet, mode){
   if (NET.host && NET.open) netSend({ t:'start', time:G.time, mode:G.mode, map:MAP.id });
   if (IS_TOUCH){
     document.body.classList.add('ingame');
-    /* 不再申请全屏：主界面调好的按键位置和战场必须是同一个视口，
-       一旦切进全屏，整排按键就会跟着视口高度整体错位 */
+    /* 触屏不锁指针；全屏由 enterFullscreen 在入口手势里申请。按键位置现在
+       按比例存、进全屏后 fullscreenchange 会重排，不会再整体错位 */
     G.paused=false; UI.pause.classList.remove('on');
   } else if (fromNet){
     /* 队友是被动开局的：浏览器不会在非用户手势里批指针锁定，但绝不能因此
@@ -10306,7 +10478,7 @@ function applySnapshot(m){
     const cap = NET.open ? need : G.waveSize;
     if (cap > enemies.length){
       spawnEnemies(cap - enemies.length, {
-        append:true, spread:true, from:playerCentroid(),
+        append:true, spread:true, from:playerCentroid(), wave:Math.max(1, G.wave),
         hpMul: survivalHpMul(Math.max(1, G.wave)), dmgMul: survivalDmgMul(Math.max(1, G.wave))
       });
     }
@@ -10665,7 +10837,7 @@ function survivalSpawnWave(){
   const want = Math.max(count, enemies.length + count);
   const extra = want - enemies.length;
   spawnEnemies(extra > 0 ? extra : 0, {
-    append:true, spread:true, from:playerCentroid(),
+    append:true, spread:true, from:playerCentroid(), wave:n,
     hpMul: survivalHpMul(n), dmgMul: survivalDmgMul(n)
   });
   waveBannerShow('第 ' + n + ' 波', count + ' 名敌兵进入堆场');
@@ -10881,11 +11053,13 @@ $('mpPanel').addEventListener('click', e=>{
 });
 $('mpDoJoin').addEventListener('click', e=>{
   e.stopPropagation();
+  /* 客机开局是房主远程触发的，那一下没有手势；趁「加入房间」这次点击先切全屏 */
+  enterFullscreen(false);
   mpJoinStart($('mpCodeInput').value);
 });
 $('mpCodeInput').addEventListener('keydown', e=>{
   e.stopPropagation();
-  if (e.key === 'Enter') mpJoinStart(e.target.value);
+  if (e.key === 'Enter'){ enterFullscreen(false); mpJoinStart(e.target.value); }
 });
 $('mpCopyCode').addEventListener('click', e=>{
   e.stopPropagation();
@@ -10905,12 +11079,22 @@ $('mpLeave').addEventListener('click', e=>{ e.stopPropagation(); mpLeave(true); 
 $('pauseLeave').addEventListener('click', e=>{ e.stopPropagation(); mpLeave(true); });
 $('mpStart').addEventListener('click', e=>{
   e.stopPropagation();
+  if (!G.started) enterFullscreen(true);
   $('mpPanel').classList.add('hide');
   if (!G.started) startGame();
 });
 
 /* 任何一次触摸/点击都把音频解锁，队友可能是被房主拉进战场的 */
 addEventListener('pointerdown', ()=>{ try { SFX.init(); } catch(_){} }, { once:true });
+/* 客机被动开局没有手势，全屏会被驳回；进战场后第一次真实操作再补一次。
+   不同浏览器把「用户激活」挂在不同事件上（pointerdown 不一定算，touchend /
+   click 才算），所以同一手势里多试几个；FS.pending 会挡住重复申请。
+   全用捕获阶段，免得被按钮上的 stopPropagation 吃掉。 */
+const retryFullscreen = ()=>{
+  if (FS.needGesture && G.started && !G.over && !fsElement()) enterFullscreen(false);
+};
+for (const type of ['pointerdown','touchend','mousedown','click'])
+  addEventListener(type, retryFullscreen, true);
 
 /* 带 ?room= 打开时直接进连接流程 */
 mpAutoJoin();
@@ -11057,16 +11241,22 @@ for (const id of PAD_KEYS){
 }
 
 if (IS_TOUCH) $('cfgBtn').classList.remove('hide');
-$('cfgBtn').addEventListener('click', e=>{ e.stopPropagation(); $('cfgPanel').classList.remove('hide'); });
-$('cfgClose').addEventListener('click', e=>{
+$('cfgBtn').addEventListener('click', e=>{
   e.stopPropagation();
-  $('cfgPanel').classList.add('hide');
-  /* 从暂停卡进来的，关设置就回暂停卡；主界面进来的保持原样 */
-  if (cfgFromPause && G.started && !G.over){
-    cfgFromPause = false;
-    UI.pause.classList.add('on');
-  }
+  cfgFromPause = false;             /* 战场上开的设置，关掉继续打，不回暂停卡 */
+  $('cfgPanel').classList.remove('hide');
 });
+/* 所有关设置的入口都必须走这里。以前只有 ✕ 会「关面板 + 还回暂停卡」，
+   点背板只做了一句 hide：pauseCfg 早把暂停卡收起来了，于是面板一关屏幕上
+   什么都没有，世界却还停着（G.paused=true / G.running=false），点哪儿都没
+   反应；cfgFromPause 又残留 true，下次从战场开设置再按 ✕ 还会凭空亮出暂停卡。 */
+function closeCfgPanel(){
+  $('cfgPanel').classList.add('hide');
+  const fromPause = cfgFromPause && G.started && !G.over;
+  cfgFromPause = false;
+  if (fromPause) UI.pause.classList.add('on');
+}
+$('cfgClose').addEventListener('click', e=>{ e.stopPropagation(); closeCfgPanel(); });
 /* 暂停菜单 → 设置：面板独占屏幕，关掉后回到暂停卡 */
 let cfgFromPause = false;
 $('pauseCfg').addEventListener('click', e=>{
@@ -11078,7 +11268,7 @@ $('pauseCfg').addEventListener('click', e=>{
 });
 $('cfgPanel').addEventListener('click', e=>{
   e.stopPropagation();
-  if (e.target === $('cfgPanel')) $('cfgPanel').classList.add('hide');
+  if (e.target === $('cfgPanel')) closeCfgPanel();
 });
 $('cfgSens').addEventListener('input', e=>{
   SENS_PREF = clamp((+e.target.value || 100) / 100, 0.4, 2.4);
@@ -11098,6 +11288,13 @@ $('padDone').addEventListener('click', e=>{ e.stopPropagation(); exitPadEdit(); 
 /* ---- 设置面板：开火开镜 / 陀螺仪 / 按键大小 ---- */
 function syncCfgUI(){
   const set = (id, v)=>{ const el = $(id); if (el) el.checked = !!v; };
+  set('cfgAutoFs', SET.autoFullscreen !== false);
+  if (!fsCapable()){
+    const row = $('cfgAutoFs') && $('cfgAutoFs').closest('.cfg-row');
+    if (row) row.classList.add('dis');
+    const note = $('cfgFsNote');
+    if (note) note.textContent = '当前浏览器不支持页面全屏（iPhone 需「添加到主屏幕」后打开），已自动跳过，其余功能不受影响。';
+  }
   set('cfgFireAds', SET.fireAds);
   set('cfgGyro', SET.gyro);
   set('cfgGyroYaw', SET.gyroYaw);
@@ -11128,6 +11325,9 @@ function syncCfgUI(){
      文件末尾初始化完（districtBindUI 会亮这个开关） */
   if (window.__tacDistrictReady && typeof districtSyncUI === 'function') districtSyncUI();
 }
+$('cfgAutoFs').addEventListener('change', e=>{
+  SET.autoFullscreen = !!e.target.checked; saveSet();
+});
 $('cfgFireAds').addEventListener('change', e=>{
   SET.fireAds = !!e.target.checked; saveSet();
 });
@@ -11166,10 +11366,28 @@ syncCfgUI();
 
 applySens();
 setTimeout(()=>{ if (IS_TOUCH) applyPadLayout(); }, 30);
-/* 进全屏、转屏、地址栏收起都会改视口，重新落一次位置 */
+/* 进全屏 / 退全屏、转屏、地址栏收起都会改视口，重新落一次位置 */
 addEventListener('resize', ()=>{ if (IS_TOUCH) applyPadLayout(); });
 addEventListener('orientationchange', ()=>setTimeout(()=>{ if (IS_TOUCH) applyPadLayout(); }, 260));
-document.addEventListener('fullscreenchange', ()=>setTimeout(()=>{ if (IS_TOUCH) applyPadLayout(); }, 120));
+function onFullscreenChange(){
+  const inside = !!fsElement();
+  /* Chrome 会把带前缀和不带前缀的事件都派一遍，别把重建跑两遍 */
+  const now = Date.now();
+  if (inside === FS.lastFs && now - (FS.lastFsAt||0) < 250) return;
+  FS.lastFs = inside; FS.lastFsAt = now;
+  if (inside){ FS.entered = true; FS.needGesture = false; }
+  else if (FS.entered) FS.userExited = true;
+  /* 全屏切换是真实视口变化，强制重建渲染目标，别被地址栏防抖吞掉 */
+  FS.forceResize = true;
+  setTimeout(()=>{ if (IS_TOUCH) applyPadLayout(); }, 120);
+  setTimeout(()=>{ FS.forceResize = true; onResize(); }, 180);
+  setTimeout(()=>{ FS.forceResize = true; onResize(); if (IS_TOUCH) applyPadLayout(); }, 480);
+  /* 桌面端：全屏还在 pending 时申请的指针锁可能被拒，全屏落地后补一次 */
+  if (inside && !IS_TOUCH && G.started && !G.over && !G.paused &&
+      !MMAP.open && !shopOpen && !document.pointerLockElement) requestLock();
+}
+document.addEventListener('fullscreenchange', onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 if (window.visualViewport) visualViewport.addEventListener('resize', ()=>{ if (IS_TOUCH) applyPadLayout(); });
 
 /* ---------------- 经济 ---------------- */
@@ -11656,8 +11874,24 @@ function syncStats(){
 /* =========================================================================
    23. RESIZE
    ========================================================================= */
+/* 移动端地址栏收起 / 弹出会让 innerHeight 抖几十像素并连发 resize。旧逻辑
+   每次都 setSize + 重建离屏缓冲（allocTargets 会 dispose 三个 RT），GPU 正
+   忙着开火 / 命中时就会「缩一下、抖一下」。宽度没变、高度只差几十像素一律
+   忽略；真变化（横竖屏、窗口缩放）合并成一次再应用。
+   例外：进入 / 退出全屏是真实视口变化，即使高度只差几十像素也必须重建，
+   否则画布仍按旧高度绘制，屏幕下方会露出黑边。 */
+let lastRW = innerWidth, lastRH = innerHeight, lastFS = !!fsElement(), resizeT = 0;
 function onResize(){
-  const w = innerWidth, h = innerHeight;
+  const w = innerWidth, h = innerHeight, fsNow = !!fsElement();
+  const force = !!FS.forceResize; FS.forceResize = false;
+  if (w === lastRW && h === lastRH && fsNow === lastFS){
+    layoutCrosshair();        /* 尺寸没变：准星跟着中心走，别重建渲染目标 */
+    return;
+  }
+  if (!force && IS_TOUCH && w === lastRW && Math.abs(h - lastRH) < 100 && fsNow === lastFS){
+    layoutCrosshair(); return;
+  }
+  lastRW = w; lastRH = h; lastFS = fsNow;
   camera.aspect = w/h; camera.updateProjectionMatrix();
   vmCamera.aspect = w/h; vmCamera.updateProjectionMatrix();
   renderer.setSize(w,h);
@@ -11672,8 +11906,15 @@ function onResize(){
     onResize._t = setTimeout(window.layoutTouch, 220);
   }
 }
-addEventListener('resize', onResize);
-addEventListener('orientationchange', ()=>setTimeout(onResize, 120));
+addEventListener('resize', ()=>{
+  if (!IS_TOUCH){ onResize(); return; }   /* 桌面窗口缩放保持即时响应 */
+  clearTimeout(resizeT);
+  resizeT = setTimeout(onResize, 120);
+});
+addEventListener('orientationchange', ()=>{
+  clearTimeout(resizeT);
+  resizeT = setTimeout(onResize, 220);
+});
 /* a phone call or a swipe back to the home screen must not leave the round
    ticking away behind the app switcher */
 document.addEventListener('visibilitychange', ()=>{
@@ -12061,6 +12302,16 @@ function rebuildCover(){
 
 /* 用地形自己的碰撞数据撒一张 2.5 米的可站立格，再在格子上做随机游走。
    这样生成的每一段巡逻腿都一定落在能走的地面上，不会刷进楼里或屋顶。 */
+/* 用地形自己的碰撞数据撒一张 2.5 米的可站立格，再在格子上做随机游走。
+   这样生成的每一段巡逻腿都一定落在能走的地面上，不会刷进楼里或屋顶。
+
+   两张 500 米城市图额外做两件事：
+   ① 候选点按「离出生点的距离」抽稀，近处多、远处少，种子间距也从 52m
+      收到 24m —— 否则头两条巡逻线就能隔两百米，第 1 波只刷两三个人时
+      玩家是在找人不是在打人；
+   ② 候选路线按「路线中心到出生点的距离」升序排序，再由近及远等距取样。
+   于是 ROUTES[0] 最近、ROUTES[n-1] 最远，spawnEnemies 就能按波次由近及远
+   逐条放开：前期扎堆，后期才铺开到全图。仓库区用手工摆好的 10 条线，不走这里。 */
 function generateRoutes(nRoutes){
   const STEP = 2.5;
   const N = Math.max(8, Math.floor(HALF * 2 / STEP));
@@ -12079,18 +12330,27 @@ function generateRoutes(nRoutes){
     }
   }
 
-  const out = [];
+  const want = Math.max(6, nRoutes || 10);
+  const cand = [];
   const seeds = [];
   let guard = 0;
-  const want = Math.max(6, nRoutes || 10);
-  while (out.length < want && guard++ < 6000){
+  /* 多撒几倍候选，排序时才有得挑；越远的点抽得越狠，近区路线才够密集 */
+  const target = want * 3;
+  while (cand.length < target && guard++ < 16000){
     const i0 = (Math.random() * N) | 0, j0 = (Math.random() * N) | 0;
     if (!ok[idx(i0, j0)]) continue;
     const sx = wx(i0), sz = wz(j0);
-    if (Math.hypot(sx - SPAWN.x, sz - SPAWN.z) < 34) continue;
+    const d0 = Math.hypot(sx - SPAWN.x, sz - SPAWN.z);
+    if (d0 < 22) continue;                                   // 别贴脸刷
+    /* 城市图对角线七百多米，路线真铺到另一头，敌人刷出来要走一分钟才接火，
+       整波就靠 sweep 慢慢往回拽。把候选圈在出生点周围一个「可交战半径」内，
+       后期靠「用更多条线 + 更大抖动」来分散，而不是靠把人扔远。 */
+    const ring = Math.min(HALF * 0.8, 200);
+    if (d0 > ring) continue;
+    if (d0 > ring * 0.55 && Math.random() < 0.45) continue;
     let tooClose = false;
     for (let k = 0; k < seeds.length; k++){
-      if (Math.hypot(sx - seeds[k][0], sz - seeds[k][1]) < 52){ tooClose = true; break; }
+      if (Math.hypot(sx - seeds[k][0], sz - seeds[k][1]) < 24){ tooClose = true; break; }
     }
     if (tooClose) continue;
 
@@ -12109,9 +12369,23 @@ function generateRoutes(nRoutes){
       if (moved >= 3) pts.push([wx(ci), wz(cj)]);
     }
     if (pts.length >= 3){
-      out.push(pts);
+      cand.push(pts);
       seeds.push([sx, sz]);
     }
+  }
+  if (!cand.length) return [];
+
+  const dist = r => {
+    let x = 0, z = 0;
+    for (const q of r){ x += q[0]; z += q[1]; }
+    return Math.hypot(x / r.length - SPAWN.x, z / r.length - SPAWN.z);
+  };
+  cand.sort((a, b) => dist(a) - dist(b));
+  /* 由近到远等距取样：前几条互相挨着，最后几条才伸到地图另一头 */
+  const take = Math.min(want, cand.length);
+  const out = [];
+  for (let k = 0; k < take; k++){
+    out.push(cand[Math.round(k * (cand.length - 1) / Math.max(1, take - 1))]);
   }
   return out;
 }
