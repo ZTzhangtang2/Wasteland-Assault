@@ -883,6 +883,618 @@
   #mapLoad .ml-bar{width:min(320px,70vw);height:2px;background:rgba(255,255,255,.12);overflow:hidden;}
   #mapLoad .ml-bar > i{display:block;height:100%;width:0;background:var(--amber);
     transition:width .18s linear;box-shadow:0 0 12px rgba(255,179,64,.6);}
+
+
+/* ===== 军械系统层 ===== */
+#slots{display:none !important;}
+/* =====================================================================
+   军械系统层：背包 / 快捷栏 / 商店 / 枪械改装
+   全部追加在原文件之上，不改动原有 HUD 布局逻辑
+   ===================================================================== */
+
+/* ---------------- 快捷栏（屏幕正下方） ---------------- */
+#hotbar{
+  position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+  transform:translateX(-50%);
+  display:flex;align-items:center;gap:clamp(6px,1.2vw,14px);
+  padding:6px clamp(6px,1vw,12px);
+  background:linear-gradient(180deg,rgba(8,12,16,.18),rgba(8,12,16,.46));
+  border:1px solid rgba(223,230,236,.10);border-radius:14px;
+  pointer-events:auto;z-index:6;
+  height:clamp(46px,7.4vh,74px);
+  max-height:12vh;
+  backdrop-filter:blur(3px);
+  /* 换枪时金光换槽位要求「立刻」，不要跟着槽位自己的淡入淡出拖半拍 */
+  transition:none;
+}
+.hb-slot{position:relative;display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(223,230,236,.22);background:rgba(223,230,236,.05);
+  color:#dfe6ec;overflow:hidden;transition:border-color .15s,background .15s,opacity .15s;}
+.hb-round{width:clamp(40px,5.6vh,56px);height:clamp(40px,5.6vh,56px);border-radius:50%;}
+.hb-gun{width:clamp(84px,11.6vh,132px);height:clamp(28px,3.9vh,44px);border-radius:6px;}
+.hb-slot.act{border-color:var(--amber);background:rgba(255,179,64,.12);
+  box-shadow:0 0 16px rgba(255,179,64,.22);}
+.hb-slot.empty{border-style:dashed;border-color:rgba(223,230,236,.20);opacity:.55;}
+.hb-slot.empty .hb-ico{opacity:.28;filter:grayscale(1);}
+.hb-slot.dim{opacity:.62;filter:saturate(.55);}
+.hb-ico{width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;}
+.hb-ico svg{max-width:100%;max-height:100%;}
+.hb-nm{position:absolute;top:2px;left:5px;font-size:7.5px;letter-spacing:.14em;
+  font-weight:700;color:rgba(255,255,255,.86);text-shadow:0 1px 3px #000;pointer-events:none;}
+.hb-am{position:absolute;right:5px;bottom:2px;font-family:ui-monospace,Consolas,monospace;
+  font-size:8px;color:#ffd27a;text-shadow:0 1px 3px #000;pointer-events:none;}
+.hb-badge{position:absolute;right:1px;bottom:1px;padding:0 3px;border-radius:6px;
+  background:rgba(0,0,0,.55);border:1px solid rgba(223,230,236,.22);
+  font-family:ui-monospace,Consolas,monospace;font-size:8px;color:#dfe6ec;pointer-events:none;}
+.hb-empty-t{font-size:8px;letter-spacing:.1em;color:rgba(223,230,236,.5);}
+.hb-bar{position:absolute;left:0;bottom:0;height:3px;background:rgba(255,179,64,.75);
+  width:0%;pointer-events:none;}
+.hb-ring{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.hb-ring circle{fill:none;stroke:var(--amber);stroke-width:2.5;
+  transform:rotate(-90deg);transform-origin:50% 50%;}
+.hb-flash{animation:hbFlash .18s ease-out;}
+@keyframes hbFlash{from{box-shadow:0 0 0 0 rgba(255,179,64,.85);}to{box-shadow:0 0 0 14px rgba(255,179,64,0);}}
+.hb-pop{animation:hbPop .2s cubic-bezier(.2,1.6,.4,1);}
+@keyframes hbPop{0%{transform:scale(1);}45%{transform:scale(1.16);}100%{transform:scale(1);}}
+
+/* 触屏：快捷栏不跟虚拟按键抢地方 */
+body.touch #hotbar{bottom:calc(env(safe-area-inset-bottom,0px) + 6px);
+  height:clamp(42px,7vh,60px);max-height:11vh;}
+body.touch #slots{display:none;}
+
+/* ---------------- 背包 ---------------- */
+.gear-card{width:min(760px,95vw);max-height:90vh;display:flex;flex-direction:column;}
+.gear-money{margin-left:auto;margin-right:10px;font-family:ui-monospace,Consolas,monospace;
+  font-size:15px;font-weight:700;color:#ffd27a;}
+.gear-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0 8px;}
+.gear-tabs .gt{padding:5px 9px;border:1px solid rgba(223,230,236,.16);background:rgba(223,230,236,.04);
+  color:rgba(223,230,236,.7);font-size:9.5px;letter-spacing:.1em;font-weight:700;cursor:pointer;
+  white-space:nowrap;border-radius:3px;font-family:inherit;}
+.gear-tabs .gt.on{border-color:var(--amber);color:#ffd27a;background:rgba(255,179,64,.12);}
+.gear-tabs.sub .gt{font-size:8.5px;padding:4px 7px;}
+
+/* 背包操作提示：整条做成琥珀色的「注意」条，粗体主句 + 一行小字补充 */
+.gear-hint{
+  position:relative;display:flex;align-items:center;gap:9px;
+  margin:9px 0 2px;padding:9px 11px 9px 11px;
+  background:linear-gradient(90deg,rgba(255,179,64,.17),rgba(255,179,64,.035) 62%,rgba(255,179,64,0));
+  border:1px solid rgba(255,179,64,.3);
+  border-left:3px solid var(--amber);
+  box-shadow:0 0 22px -12px rgba(255,179,64,.75),inset 0 1px 0 rgba(255,255,255,.05);
+  animation:gearHintPulse 3.4s ease-in-out infinite;
+}
+@keyframes gearHintPulse{
+  0%,100%{box-shadow:0 0 22px -12px rgba(255,179,64,.75),inset 0 1px 0 rgba(255,255,255,.05);}
+  50%    {box-shadow:0 0 26px -6px rgba(255,179,64,.6),inset 0 1px 0 rgba(255,255,255,.07);}
+}
+.gear-hint .gh-i{flex:0 0 auto;display:flex;width:16px;height:16px;color:#ffb340;opacity:.95;}
+.gear-hint .gh-i svg{width:16px;height:16px;fill:currentColor;display:block;}
+.gear-hint .gh-t{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.gear-hint b{
+  font-size:11.5px;font-weight:800;letter-spacing:.1em;line-height:1.25;
+  color:#ffd79a;text-shadow:0 0 16px rgba(255,179,64,.35);
+}
+.gear-hint i{
+  font-style:normal;font-size:9px;line-height:1.45;letter-spacing:.03em;
+  color:rgba(223,230,236,.52);
+}
+@media (max-width:560px){
+  .gear-hint{margin:8px 0 2px;padding:8px 9px 8px 9px;gap:7px;}
+  .gear-hint b{font-size:10.5px;letter-spacing:.06em;}
+  .gear-hint i{font-size:8px;}
+}
+.bag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));
+  gap:7px;overflow-y:auto;flex:1;min-height:110px;padding:2px;
+  grid-auto-rows:minmax(78px,auto);}
+/* touch-action 必须是 none：
+   写 pan-y 等于告诉浏览器「纵向手势由你接管」，手指一往上/下走浏览器就开始滚列表，
+   并顺手发一个 pointercancel 把拖拽掐掉 —— 表现就是「第一下只能左右拖」。
+   代价是原生滚动没了，改由 bindBagDrag 里自己驱动（带惯性）。 */
+.bag-cell{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:6px 3px 4px;border:1px solid rgba(223,230,236,.13);
+  background:rgba(223,230,236,.04);cursor:grab;user-select:none;touch-action:none;}
+.bag-cell:hover{border-color:rgba(255,179,64,.5);background:rgba(255,179,64,.07);}
+.bag-cell.dragging{opacity:.32;}
+
+/* 拖拽中的性能保护：
+   注意：这里**不能**用 contain:strict —— 它含 size containment，会把幽灵盒
+   强制压成 0×0 并裁剪内容，图标就整个消失了（上一版的 bug）。只开 will-change。 */
+.gear-dragging .gear-ghost{
+  will-change:transform;
+  box-shadow:0 10px 24px rgba(0,0,0,.6);
+}
+.gear-dragging #bagPanel,.gear-dragging #shop,.gear-dragging #smithPanel,
+.gear-dragging .gear-card,.gear-dragging .smith-card,.gear-dragging .bag-grid,
+.gear-dragging .gear-hb-drop{will-change:auto;}
+.gear-dragging .bag-cell,.gear-dragging .hb-slot,.gear-dragging .bag-cell .bc-ico svg{
+  backdrop-filter:none !important;
+}
+.gear-dragging .bag-cell,.gear-dragging .bag-cell:hover{
+  transition:none !important;filter:none !important;box-shadow:none !important;
+  border-color:rgba(223,230,236,.13) !important;background:rgba(223,230,236,.04) !important;
+}
+.gear-dragging .hb-slot{transition:none !important;}
+.bag-cell .bc-ico{height:30px;display:flex;align-items:center;justify-content:center;}
+.bag-cell .bc-ico svg{max-height:30px;max-width:100%;}
+.bag-cell .bc-nm{font-size:8.5px;color:#e8eef3;text-align:center;line-height:1.25;}
+.bag-cell .bc-qt{position:absolute;right:3px;bottom:2px;font-family:ui-monospace,Consolas,monospace;
+  font-size:8px;color:#ffd27a;}
+.bag-cell .bc-tag{position:absolute;left:0;top:0;padding:1px 3px;background:rgba(255,179,64,.85);
+  color:#12161a;font-size:7px;font-weight:700;letter-spacing:.06em;}
+.bag-cell .bc-ok{position:absolute;left:3px;bottom:2px;font-size:7px;color:#7ee081;}
+.gear-hb-drop{margin-top:10px;padding-top:10px;border-top:1px solid rgba(223,230,236,.10);
+  display:flex;align-items:center;gap:clamp(6px,1.2vw,14px);justify-content:center;
+  min-height:56px;flex-wrap:wrap;}
+.gear-hb-drop .hb-lb{font-size:8px;letter-spacing:.14em;color:rgba(223,230,236,.35);
+  align-self:center;margin-right:4px;}
+.gear-drop-ok{outline:2px solid #7ee081 !important;outline-offset:-2px;}
+.gear-drop-bad{outline:2px solid #ff3b30 !important;outline-offset:-2px;}
+.gear-ghost{position:fixed;left:0;top:0;z-index:999;pointer-events:none;opacity:.94;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:3px 6px 2px;border:1px solid rgba(255,179,64,.55);border-radius:5px;
+  background:rgba(8,12,16,.84);
+  transform:translate(-50%,-100%) translateY(-10px) scale(1.02);
+  filter:drop-shadow(0 6px 14px rgba(0,0,0,.6));}
+.gear-ghost .gh-nm{font-size:8px;letter-spacing:.08em;color:#ffd27a;white-space:nowrap;
+  max-width:96px;overflow:hidden;text-overflow:ellipsis;}
+.gear-tip{position:fixed;z-index:998;pointer-events:none;max-width:230px;padding:8px 10px;
+  background:rgba(6,10,14,.96);border:1px solid rgba(255,179,64,.4);
+  font-size:9.5px;line-height:1.6;color:#dfe6ec;box-shadow:0 10px 30px rgba(0,0,0,.6);}
+.gear-tip b{color:#ffd27a;display:block;margin-bottom:3px;font-size:10.5px;}
+.gear-tip .gt-d{color:rgba(223,230,236,.55);}
+.gear-tip .gt-c{color:#7ee081;font-size:8.5px;margin-top:3px;}
+.gear-toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);
+  transform:translateX(-50%);z-index:997;pointer-events:none;
+  padding:7px 14px;background:rgba(6,10,14,.92);border:1px solid rgba(255,179,64,.45);
+  color:#ffd27a;font-size:10.5px;letter-spacing:.06em;opacity:0;transition:opacity .18s;}
+.gear-toast.on{opacity:1;}
+
+/* ---------------- 商店分区 ---------------- */
+.shop-card{width:min(620px,95vw);}
+.shop-tabs2{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px;}
+.shop-row{display:flex;align-items:center;gap:11px;padding:9px 11px;
+  border:1px solid rgba(223,230,236,.12);background:rgba(223,230,236,.04);}
+.shop-row .sr-i{width:38px;height:34px;display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;}
+.shop-row .sr-i svg{max-height:32px;max-width:38px;}
+.shop-row .sr-t{flex:1;min-width:0;}
+.shop-row .sr-n{font-size:10.5px;font-weight:700;color:#eef3f7;letter-spacing:.05em;}
+.shop-row .sr-d{font-size:8.5px;color:rgba(223,230,236,.42);margin-top:3px;line-height:1.5;}
+.shop-row .sr-p{font-family:ui-monospace,Consolas,monospace;font-size:13px;font-weight:700;
+  color:#ffd27a;white-space:nowrap;}
+.shop-row button{font-family:inherit;font-size:9.5px;letter-spacing:.1em;font-weight:700;color:#fff;
+  padding:6px 10px;background:rgba(255,179,64,.14);border:1px solid rgba(255,179,64,.5);
+  cursor:pointer;white-space:nowrap;}
+.shop-row button:disabled{opacity:.32;cursor:default;background:rgba(223,230,236,.05);
+  border-color:rgba(223,230,236,.14);}
+.shop-row.own{opacity:.62;}
+
+/* ---------------- 枪械改装 ---------------- */
+#smithPanel{position:fixed;inset:0;z-index:59;display:flex;align-items:center;justify-content:center;
+  background:rgba(2,4,6,.80);}
+#smithPanel.hide{display:none;}
+.smith-card{width:min(720px,96vw);max-height:92vh;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,#0b1015,#06090c);border:1px solid rgba(255,179,64,.3);
+  box-shadow:0 30px 90px rgba(0,0,0,.8);padding:14px 16px 12px;}
+.smith-top{display:flex;align-items:center;gap:10px;}
+.smith-top .st-n{font-size:13px;font-weight:700;letter-spacing:.12em;color:#eef3f7;}
+.smith-body{display:flex;gap:14px;margin-top:10px;align-items:flex-start;}
+.smith-view{flex:1;min-width:0;height:clamp(110px,20vh,190px);position:relative;
+  background:radial-gradient(ellipse at 50% 40%,rgba(255,179,64,.07),rgba(223,230,236,.03) 60%,transparent);
+  border:1px solid rgba(223,230,236,.12);display:flex;align-items:center;justify-content:center;
+  touch-action:none;cursor:grab;}
+.smith-view:active{cursor:grabbing;}
+.smith-view svg{max-width:94%;max-height:86%;}
+.smith-view .srot{position:absolute;left:6px;bottom:5px;font-size:8px;
+  color:rgba(223,230,236,.3);letter-spacing:.1em;}
+.smith-side{flex:0 0 190px;display:flex;flex-direction:column;gap:6px;}
+.smith-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+.ss{padding:7px 8px;border:1px solid rgba(223,230,236,.16);background:rgba(223,230,236,.04);
+  cursor:pointer;text-align:left;font-family:inherit;color:inherit;}
+.ss.on{border-color:var(--amber);background:rgba(255,179,64,.12);}
+.ss.none{opacity:.35;cursor:default;border-style:dashed;}
+.ss .ss-l{font-size:7.5px;letter-spacing:.16em;color:rgba(223,230,236,.4);}
+.ss .ss-v{font-size:9.5px;color:#eef3f7;margin-top:2px;font-weight:700;}
+.ss .ss-v.none{color:rgba(223,230,236,.35);font-weight:400;}
+.smith-stats{border-top:1px solid rgba(223,230,236,.10);padding-top:7px;font-size:8.5px;
+  color:rgba(223,230,236,.5);line-height:1.75;}
+.smith-stats .st-row{display:flex;justify-content:space-between;gap:8px;}
+.smith-stats .st-row b{color:#dfe6ec;font-family:ui-monospace,Consolas,monospace;font-weight:600;}
+.smith-stats .st-row b.up{color:#7ee081;}
+.smith-stats .st-row b.down{color:#ff8a80;}
+.smith-list-wrap{margin-top:11px;border-top:1px solid rgba(223,230,236,.10);padding-top:9px;}
+.smith-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:6px;
+  max-height:26vh;overflow-y:auto;}
+.spart{display:flex;gap:8px;align-items:flex-start;padding:7px 8px;
+  border:1px solid rgba(223,230,236,.12);background:rgba(223,230,236,.04);cursor:pointer;
+  font-family:inherit;color:inherit;text-align:left;}
+.spart:hover{border-color:rgba(255,179,64,.5);}
+.spart.on{border-color:var(--amber);background:rgba(255,179,64,.10);}
+.spart.bad{opacity:.4;cursor:not-allowed;}
+.spart .sp-i{width:26px;flex:0 0 26px;display:flex;justify-content:center;}
+.spart .sp-t{flex:1;min-width:0;}
+.spart .sp-n{font-size:9.5px;font-weight:700;color:#eef3f7;}
+.spart .sp-d{font-size:8px;color:rgba(223,230,236,.42);margin-top:2px;line-height:1.45;}
+.smith-foot{margin-top:9px;display:flex;gap:8px;align-items:center;}
+.smith-foot .mp-note{flex:1;}
+.sbtn{font-family:inherit;font-size:9.5px;letter-spacing:.12em;font-weight:700;color:#fff;
+  padding:7px 13px;background:rgba(255,179,64,.14);border:1px solid rgba(255,179,64,.5);
+  cursor:pointer;}
+.sbtn.ghost{background:rgba(223,230,236,.05);border-color:rgba(223,230,236,.2);}
+@media (max-width:640px){
+  .smith-body{flex-direction:column;}
+  .smith-side{flex:1 1 auto;width:100%;}
+  .smith-view{width:100%;height:120px;}
+  .gear-card{width:97vw;max-height:94vh;}
+  .bag-grid{grid-template-columns:repeat(auto-fill,minmax(64px,1fr));}
+  .bag-cell{min-height:70px;}
+}
+
+/* ================= 视觉增强 ================= */
+
+/* 快捷栏：加深底色、加强描边，保证在任何场景下都读得清 */
+#hotbar{
+  background:linear-gradient(180deg,rgba(6,10,14,.62),rgba(4,7,10,.86));
+  border-color:rgba(223,230,236,.16);
+  box-shadow:0 8px 28px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.hb-slot{background:rgba(12,17,22,.72);border-color:rgba(223,230,236,.18);}
+.hb-slot.act{
+  border-color:#ffb340;
+  background:linear-gradient(180deg,rgba(255,179,64,.22),rgba(255,179,64,.08));
+  box-shadow:0 0 18px rgba(255,179,64,.30), inset 0 0 12px rgba(255,179,64,.10);
+}
+.hb-gun{width:clamp(96px,13.2vh,152px);height:clamp(32px,4.4vh,50px);}
+.hb-round{width:clamp(44px,6.2vh,62px);height:clamp(44px,6.2vh,62px);}
+.hb-nm{font-size:8px;letter-spacing:.16em;}
+.hb-am{font-size:9px;}
+.hb-badge{font-size:9px;padding:0 4px;}
+.hb-empty-t{font-size:8.5px;letter-spacing:.14em;}
+.hb-slot .hb-key{position:absolute;left:4px;bottom:2px;font-size:7px;color:rgba(223,230,236,.30);
+  font-family:ui-monospace,Consolas,monospace;pointer-events:none;}
+
+/* 滚动条：细、暗、不抢眼 */
+.shop-list::-webkit-scrollbar,.bag-grid::-webkit-scrollbar,
+.smith-list::-webkit-scrollbar{width:6px;}
+.shop-list::-webkit-scrollbar-track,.bag-grid::-webkit-scrollbar-track,
+.smith-list::-webkit-scrollbar-track{background:rgba(223,230,236,.04);}
+.shop-list::-webkit-scrollbar-thumb,.bag-grid::-webkit-scrollbar-thumb,
+.smith-list::-webkit-scrollbar-thumb{background:rgba(255,179,64,.35);border-radius:3px;}
+.shop-list::-webkit-scrollbar-thumb:hover,.bag-grid::-webkit-scrollbar-thumb:hover,
+.smith-list::-webkit-scrollbar-thumb:hover{background:rgba(255,179,64,.6);}
+.shop-list,.bag-grid,.smith-list{scrollbar-width:thin;scrollbar-color:#ffb340 #0b1015;}
+
+/* 商店：分区标题 */
+.shop-sec{width:100%;margin:12px 0 2px;padding-bottom:5px;font-size:9px;letter-spacing:.18em;
+  color:rgba(255,179,64,.75);border-bottom:1px solid rgba(255,179,64,.18);}
+.shop-sec:first-child{margin-top:2px;}
+
+/* 背包：空状态 */
+.bag-empty{grid-column:1/-1;padding:26px 0;text-align:center;font-size:10px;
+  color:rgba(223,230,236,.3);letter-spacing:.1em;}
+
+/* 改装：数值表更清晰 */
+.smith-stats .st-h{font-size:8px;letter-spacing:.2em;color:rgba(255,179,64,.6);margin-bottom:4px;}
+
+/* ---------- 触屏：快捷栏占最底部一条，右侧按键整体上移让位 ---------- */
+body.touch #hotbar{
+  bottom:calc(env(safe-area-inset-bottom,0px) + 6px);
+  height:clamp(40px,6.4vh,54px);
+  max-height:9vh;
+  padding:5px 8px;
+  gap:clamp(5px,1.6vw,10px);
+}
+body.touch .hb-gun{width:clamp(78px,21vw,116px);height:clamp(26px,4vh,34px);}
+body.touch .hb-round{width:clamp(36px,9.6vw,46px);height:clamp(36px,9.6vw,46px);}
+body.touch .hb-nm{font-size:7px;top:1px;left:4px;}
+body.touch .hb-am{font-size:8px;right:4px;bottom:1px;}
+body.touch .hb-badge{font-size:8px;}
+body.touch .hb-key{display:none;}
+
+body.touch #tFire{bottom:calc(18px + 44px);}
+body.touch #tAds{bottom:calc(34px + 44px);}
+body.touch #tReload{bottom:calc(22px + 44px);}
+body.touch #tJump{bottom:calc(106px + 44px);}
+body.touch #tCrouch{bottom:calc(84px + 44px);}
+body.touch #tSprint{bottom:calc(140px + 44px);}
+body.touch #tNade{bottom:calc(172px + 44px);}
+body.touch #tSlide{bottom:calc(118px + 44px);}
+
+/* 拖拽幽灵：直接跟手（不加 transition）。
+   原来带 .055s 的 left/top 过渡，看上去像「粘手」，手感就是又慢又卡。 */
+.gear-ghost{will-change:left,top;transition:none;}
+
+/* 快捷栏在面板打开时淡出，避免与面板抢视线 */
+body.gear-panel #hotbar{opacity:.25;}
+
+/* 背包/商店里的只读条目（子弹、护甲） */
+.bag-cell.readonly{cursor:default;background:rgba(223,230,236,.02);border-style:dashed;}
+.bag-cell.readonly:hover{border-color:rgba(223,230,236,.2);background:rgba(223,230,236,.03);}
+.bag-cell.readonly .bc-nm{color:rgba(223,230,236,.55);}
+
+/* 微调：快捷栏枪图撑满、改装大图收紧 */
+.hb-gun .hb-ico{height:100%;padding:2px 3px 4px;}
+.hb-gun .hb-ico svg{height:100%;width:auto;}
+.hb-am{background:linear-gradient(90deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.5) 40%);padding-left:8px;border-radius:2px;}
+.smith-view{height:clamp(100px,16vh,150px);}
+.smith-stats{font-size:9px;line-height:1.85;}
+.smith-view svg{max-width:96%;max-height:92%;}
+
+/* 面板外层滚动条（部分浏览器把滚动放在 .shop-card / .mp-card 上） */
+.shop-card::-webkit-scrollbar,.mp-card::-webkit-scrollbar{width:6px;}
+.shop-card::-webkit-scrollbar-track,.mp-card::-webkit-scrollbar-track{background:rgba(223,230,236,.04);}
+.shop-card::-webkit-scrollbar-thumb,.mp-card::-webkit-scrollbar-thumb{background:rgba(255,179,64,.45);border-radius:3px;}
+.shop-card,.mp-card{scrollbar-width:thin;scrollbar-color:#ffb340 #0b1015;}
+
+/* =====================================================================
+   商店分类 UI 重做 —— 战术面板式导航
+   旧的分类是一排 9.5px 的小方块按钮，配色平、层级糊，和「战地补给」
+   这种军用终端的气质不搭。这里改成：图标 + 中英双行标签的等分导航条，
+   选中项走琥珀渐变 + 底部光条；列表区独立滚动，头/导航常驻不跟着跑。
+   ===================================================================== */
+
+/* ---- 面板骨架：头 / 导航 / 列表 / 脚各占一段，只有列表滚动 ---- */
+#shop{
+  background:
+    radial-gradient(ellipse 120% 70% at 50% -10%,rgba(255,179,64,.07),transparent 62%),
+    rgba(2,4,6,.86);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  padding:12px;
+}
+#shop .shop-card{
+  width:min(640px,94vw);
+  /* 内容多时撑到 88vh 内部滚动；条目少时给个下限，别让面板塌成一条 */
+  min-height:min(430px,80vh);
+  max-height:88vh;
+  padding:0;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  position:relative;
+  background:linear-gradient(180deg,#0c1219 0%,#080d12 42%,#05080b 100%);
+  border:1px solid rgba(255,179,64,.24);
+  box-shadow:
+    0 40px 110px rgba(0,0,0,.9),
+    0 0 0 1px rgba(0,0,0,.55) inset,
+    0 1px 0 rgba(255,255,255,.055) inset;
+  scrollbar-width:none;
+}
+#shop .shop-card::-webkit-scrollbar{display:none;}
+/* 顶边一道琥珀光，像设备通电时的指示灯 */
+#shop .shop-card::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:1.5px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,179,64,.85) 32%,rgba(255,214,150,.95) 50%,rgba(255,179,64,.85) 68%,transparent);
+  opacity:.85;
+}
+
+/* ---- 头部 ---- */
+#shop .shop-h{
+  align-items:flex-start;gap:14px;
+  padding:15px 18px 13px;
+  border-bottom:1px solid rgba(223,230,236,.07);
+  background:linear-gradient(180deg,rgba(255,179,64,.035),transparent);
+}
+#shop .shop-tt{gap:2px;}
+.shop-eyebrow{
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:7px;letter-spacing:.32em;font-weight:600;
+  color:rgba(255,179,64,.55);margin-bottom:2px;
+}
+#shop .shop-t{font-size:13.5px;letter-spacing:.3em;line-height:1.2;}
+#shop .shop-sub{font-size:8px;letter-spacing:.1em;color:rgba(223,230,236,.3);}
+#shop .shop-wallet{
+  display:flex;align-items:baseline;gap:2px;
+  font-size:20px;letter-spacing:.02em;color:#ffd79a;
+  text-shadow:0 0 18px rgba(255,179,64,.28);
+  padding-top:9px;
+}
+#shop .shop-wallet .cur{font-size:11px;font-weight:600;color:rgba(255,179,64,.6);}
+#shop .xbtn{align-self:flex-start;margin-top:1px;}
+
+/* ---- 分类导航条 ---- */
+#shop .shop-nav{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:4px;
+  margin:12px 14px 0;padding:5px;
+  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.34));
+  border:1px solid rgba(223,230,236,.075);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.035),
+    inset 0 -18px 26px -22px rgba(255,179,64,.55);
+  position:relative;
+}
+#shop .cat-tab{
+  position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:47px;padding:7px 2px 8px;
+  font-family:inherit;color:rgba(223,230,236,.4);cursor:pointer;
+  background:none;border:1px solid transparent;
+  transition:color .16s,background .16s,border-color .16s,box-shadow .16s;
+  -webkit-tap-highlight-color:transparent;
+}
+#shop .cat-tab .ct-ic{display:flex;align-items:center;justify-content:center;height:17px;}
+#shop .cat-tab .ct-ic svg{
+  width:17px;height:17px;display:block;fill:currentColor;
+  transition:transform .18s cubic-bezier(.2,1.6,.4,1),filter .18s;
+}
+#shop .cat-tab .ct-lb{font-size:9.5px;font-weight:700;letter-spacing:.14em;line-height:1;}
+#shop .cat-tab .ct-en{
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:6px;letter-spacing:.16em;line-height:1;
+  color:rgba(223,230,236,.28);transition:color .16s;
+}
+#shop .cat-tab:hover{color:rgba(255,224,176,.9);background:rgba(255,179,64,.055);}
+#shop .cat-tab:hover .ct-ic svg{transform:translateY(-1px);}
+#shop .cat-tab.on{
+  color:#ffd79a;
+  background:linear-gradient(180deg,rgba(255,179,64,.21),rgba(255,179,64,.045));
+  border-color:rgba(255,179,64,.46);
+  box-shadow:
+    0 0 22px -6px rgba(255,179,64,.5),
+    inset 0 1px 0 rgba(255,255,255,.09);
+}
+#shop .cat-tab.on .ct-ic svg{filter:drop-shadow(0 0 6px rgba(255,179,64,.55));}
+#shop .cat-tab.on .ct-en{color:rgba(255,206,138,.7);}
+/* 选中项底部的光条，是整套导航的「选中」主信号 */
+#shop .cat-tab.on::after{
+  content:"";position:absolute;left:18%;right:18%;bottom:0;height:2px;
+  background:linear-gradient(90deg,transparent,#ffb340,transparent);
+  box-shadow:0 0 10px rgba(255,179,64,.9);
+}
+
+/* ---- 配件子分类 ---- */
+#shop .shop-sub{margin:9px 14px 0;display:flex;gap:5px;flex-wrap:wrap;}
+#shop .cat-sub{
+  font-family:inherit;font-size:8.5px;font-weight:700;letter-spacing:.14em;
+  padding:5px 11px;color:rgba(223,230,236,.45);
+  background:rgba(223,230,236,.025);border:1px solid rgba(223,230,236,.09);
+  cursor:pointer;transition:.15s;
+}
+#shop .cat-sub:hover{color:rgba(255,224,176,.9);border-color:rgba(255,179,64,.35);}
+#shop .cat-sub.on{
+  color:#ffd79a;border-color:rgba(255,179,64,.5);background:rgba(255,179,64,.12);
+  box-shadow:0 0 14px -6px rgba(255,179,64,.6);
+}
+
+/* ---- 当前分类标题 ---- */
+#shop .shop-meta{
+  display:flex;align-items:center;gap:7px;
+  margin:13px 16px 0;
+  font-size:8.5px;letter-spacing:.24em;font-weight:700;
+  color:rgba(255,179,64,.72);
+}
+#shop .shop-meta::before{
+  content:"";width:3px;height:9px;background:var(--amber);
+  box-shadow:0 0 8px rgba(255,179,64,.8);flex:0 0 auto;
+}
+#shop .shop-meta b{
+  margin-left:auto;font-weight:600;letter-spacing:.12em;
+  color:rgba(223,230,236,.32);font-family:ui-monospace,Consolas,monospace;
+}
+
+/* ---- 列表 ---- */
+#shop .shop-list{
+  margin:7px 14px 0;padding-bottom:4px;
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  gap:5px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,179,64,.5) transparent;
+}
+#shop .shop-list::-webkit-scrollbar{width:3px;}
+#shop .shop-list::-webkit-scrollbar-track{background:transparent;}
+#shop .shop-list::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,rgba(255,179,64,.7),rgba(255,179,64,.22));
+  border-radius:2px;
+}
+#shop .shop-list::-webkit-scrollbar-thumb:hover{background:rgba(255,179,64,.8);}
+#shop .shop-sec{
+  display:flex;align-items:center;gap:8px;
+  margin:13px 0 3px;padding:0 0 6px;
+  font-size:8px;letter-spacing:.26em;font-weight:700;
+  color:rgba(255,179,64,.7);
+  border-bottom:1px solid rgba(255,179,64,.13);
+}
+#shop .shop-sec:first-child{margin-top:1px;}
+#shop .shop-sec::after{
+  content:"";flex:1;height:1px;
+  background:linear-gradient(90deg,rgba(255,179,64,.18),transparent);
+}
+
+/* ---- 条目 ---- */
+#shop .shop-row{
+  position:relative;
+  padding:10px 12px 10px 13px;
+  border:1px solid rgba(223,230,236,.075);
+  background:linear-gradient(90deg,rgba(223,230,236,.052),rgba(223,230,236,.018));
+  transition:border-color .15s,background .15s;
+}
+#shop .shop-row::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:transparent;transition:background .15s,box-shadow .15s;
+}
+#shop .shop-row:hover{
+  border-color:rgba(255,179,64,.4);
+  background:linear-gradient(90deg,rgba(255,179,64,.085),rgba(255,179,64,.015));
+}
+#shop .shop-row:hover::before{background:rgba(255,179,64,.85);box-shadow:0 0 12px rgba(255,179,64,.6);}
+#shop .shop-row .sr-i{
+  width:40px;height:36px;flex:0 0 auto;
+  border:1px solid rgba(223,230,236,.07);
+  background:radial-gradient(ellipse at 50% 45%,rgba(255,179,64,.09),rgba(0,0,0,.18) 70%);
+}
+#shop .shop-row .sr-n{font-size:10.5px;letter-spacing:.07em;}
+#shop .shop-row .sr-d{font-size:8.5px;color:rgba(223,230,236,.46);}
+#shop .shop-row .sr-p{font-size:14px;letter-spacing:.02em;}
+#shop .shop-row button{
+  padding:7px 13px;
+  color:#ffe3bb;
+  background:linear-gradient(180deg,rgba(255,179,64,.26),rgba(255,179,64,.09));
+  border:1px solid rgba(255,179,64,.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  transition:background .15s,box-shadow .15s,color .15s;
+}
+#shop .shop-row button:not(:disabled):hover{
+  color:#fff;
+  background:linear-gradient(180deg,rgba(255,179,64,.44),rgba(255,179,64,.17));
+  box-shadow:0 0 18px -4px rgba(255,179,64,.65),inset 0 1px 0 rgba(255,255,255,.12);
+}
+#shop .shop-row button:disabled{
+  color:rgba(223,230,236,.4);
+  background:rgba(223,230,236,.035);
+  border-color:rgba(223,230,236,.1);
+  box-shadow:none;
+}
+
+/* ---- 底注 ---- */
+#shop .shop-foot{
+  margin:0;padding:9px 18px 12px;
+  border-top:1px solid rgba(223,230,236,.06);
+  background:rgba(0,0,0,.22);
+  font-size:8px;letter-spacing:.07em;color:rgba(223,230,236,.26);
+}
+
+/* ---- 矮屏（手机横屏）：压掉副标题，把高度让给列表 ---- */
+@media (max-height:560px){
+  #shop .shop-eyebrow,#shop .shop-sub{display:none;}
+  #shop .shop-h{padding:9px 14px 8px;align-items:center;}
+  #shop .shop-t{font-size:12px;letter-spacing:.22em;}
+  #shop .shop-wallet{padding-top:0;font-size:17px;}
+  #shop .shop-nav{margin:8px 12px 0;}
+  #shop .cat-tab{min-height:40px;padding:4px 2px 5px;gap:3px;}
+  #shop .shop-meta{margin-top:8px;}
+  #shop .shop-foot{display:none;}
+}
+
+/* 矮屏（手机横屏）背包：提示条压成一行，底注让位给物品格 */
+@media (max-height:560px){
+  .gear-tabs{margin:7px 0 6px;}
+  .gear-tabs .gt{padding:4px 8px;font-size:9px;}
+  .gear-hint{margin:6px 0 2px;padding:6px 9px;gap:6px;}
+  .gear-hint b{font-size:10px;letter-spacing:.05em;}
+  .gear-hint i{display:none;}
+  #bagPanel .mp-note{display:none;}
+}
+
+/* ---- 窄屏 / 触屏 ---- */
+@media (max-width:560px){
+  #shop{padding:8px;}
+  #shop .shop-card{width:100%;min-height:min(440px,78vh);max-height:92vh;}
+  #shop .shop-h{padding:13px 13px 11px;gap:9px;}
+  #shop .shop-t{font-size:12.5px;letter-spacing:.22em;}
+  #shop .shop-wallet{font-size:17px;padding-top:8px;}
+  #shop .shop-nav{margin:10px 8px 0;padding:4px;gap:2px;}
+  #shop .cat-tab{min-height:44px;padding:6px 1px 7px;gap:3px;}
+  #shop .cat-tab .ct-lb{font-size:9px;letter-spacing:.06em;}
+  #shop .cat-tab .ct-en{display:none;}
+  #shop .shop-sub{margin:8px 8px 0;gap:4px;}
+  #shop .cat-sub{padding:5px 9px;font-size:8px;letter-spacing:.1em;}
+  #shop .shop-meta{margin:11px 10px 0;font-size:8px;letter-spacing:.18em;}
+  #shop .shop-list{margin:6px 8px 0;}
+  #shop .shop-row{padding:9px 10px 9px 11px;gap:9px;}
+  #shop .shop-row .sr-i{width:34px;height:32px;}
+  #shop .shop-row .sr-p{font-size:12.5px;}
+  #shop .shop-row button{padding:7px 10px;font-size:9px;letter-spacing:.08em;}
+  #shop .shop-foot{padding:8px 13px 10px;font-size:7.5px;}
+}
+
 </style>
 </head>
 <body>
@@ -1205,12 +1817,16 @@
 <div id="shop" class="hide">
   <div class="shop-card">
     <div class="shop-h">
-      <div class="shop-tt"><span class="shop-t">战地补给</span><span class="shop-sub">资金仅本局有效</span></div>
-      <div class="shop-wallet">¥<b id="shopMoney">800</b></div>
+      <div class="shop-tt">
+        <span class="shop-eyebrow">SUPPLY DEPOT // 07</span>
+        <span class="shop-t">战地补给</span>
+        <span class="shop-sub">资金仅本局有效 · 补给不暂停战局</span>
+      </div>
+      <div class="shop-wallet"><span class="cur">¥</span><b id="shopMoney">800</b></div>
       <button class="xbtn" id="shopClose" aria-label="关闭">✕</button>
     </div>
     <div class="shop-list" id="shopList"></div>
-    <div class="shop-foot">PC 按 B 开关 · 手机点右上角「补给」 · 补给不暂停，打开时无法移动</div>
+    <div class="shop-foot">PC 按 B 开关 · 手机点右上角「补给」 · 打开时无法移动</div>
   </div>
 </div>
 
@@ -5406,8 +6022,8 @@ const WEAPONS = [
     adsFov:50, adsSpread:0.34, adsTime:0.20, noise:26,
     shellBig:false, build:buildPistol },
   { id:'sniper', name:'SR-7 长弓', sound:'sniper',
-    /* 强袭敌兵现在 220 血：打身体两枪，爆头（×2.0）仍然一枪带走。
-       想恢复「身体一枪一个」就把 damage 提到 220，但那样狙击会盖过所有步枪。 */
+    /* 强袭敌兵现在 155 血：打身体两枪，爆头（×2.0 = 300）仍然一枪带走。
+       想恢复「身体一枪一个」就把 damage 抬到 160 以上，但那样狙击会盖过所有步枪。 */
     magSize:5, reserve:25, maxReserve:25, damage:150, headMult:2.0,
     rpm:999, auto:false, semiToggle:false, pellets:1, boltTime:1.5,
     spreadBase:0.030, spreadMax:0.070, spreadShot:0.010, spreadRecover:0.10,
@@ -5770,13 +6386,19 @@ const ST = { PATROL:0, ALERT:1, COMBAT:2, DEAD:3 };
 const enemies = [];
 let enemyHitMeshes = [];
 
-/* 强袭基线（单机突袭 / 合作强袭）：敌兵 220 血、子弹 1.8 倍伤害。
-   老版本是 100 血、1.0 倍，十个人站在开阔地上跟纸人一样；1.5 / 1.4 那档
-   在第一波削伤害之后又显得偏软，一波推完几乎不掉血，所以再抬一档：
-   血量 100 → 220、单发伤害约 10~16（原来 7.7~12.6），必须靠掩体和爆头打。
+/* 强袭基线（单机突袭 / 合作强袭）。
+   血量 220 太肉：步枪（31）要打 8 枪、手枪（35）7 枪一个步兵，十个人围上来
+   就是必死。现在 1.55 → 敌兵 155 血：步枪 5 枪、手枪 5 枪、霰弹贴脸 2 枪、
+   狙击打身体照样两枪，爆头依旧一枪带走。
+   伤害 1.8 → 1.45：重装点射从一下 26 降到 21，满甲（50）能硬吃两下。
    波次生存走自己的成长曲线（见 survivalHpMul / survivalDmgMul），不吃这套。 */
-const ASSAULT_HP_MUL  = 2.2;
-const ASSAULT_DMG_MUL = 1.8;
+const ASSAULT_HP_MUL  = 1.55;
+const ASSAULT_DMG_MUL = 1.45;
+/* 强袭专属宽容度：同时在开火的敌人上限、命中误差放大、交火前的停顿。
+   这三个只作用于 mission（单机突袭 / 合作强袭），求生波次与死斗保持原样。 */
+const ASSAULT_SHOOTERS = 2;      // 最多 2 人同时开枪（原 2，但配合下面两项更宽松）
+const ASSAULT_ERR_MUL  = 1.5;    // AI 瞄准误差 ×1.5，站着不动的你更容易被漏掉
+const ASSAULT_GRACE    = 5.0;    // 开局 5 秒不开火（原 3 秒）
 
 /* 巡逻路线只需贴合地面一次：波次模式会一轮接一轮地刷同一批路线，
    每次都跑一遍可达性搜索既慢又没必要 */
@@ -7470,7 +8092,10 @@ addEventListener('keydown', e=>{
       /* 死斗：四把枪开局全解锁，1-4 直接拿枪 */
       equipGun(PVP_GUNS[di]);
       updateAmmoUI(); refreshTouchUI();
-    } else if (di >= 2) switchWeaponSlot(2);
+    } else if (di === 3){
+      /* 4 = 使用药品（军械层） */
+      try{ window.useMed && window.useMed(); }catch(_mErr){}
+    } else if (di === 2) switchWeaponSlot(2);
     else switchWeaponSlot(di);
   }
   if (e.code==='KeyV'){
@@ -7508,7 +8133,8 @@ function isUIPress(e){
      覆盖暂停卡、主菜单、设置、联机、背包、商店、地图选择与全屏地图。 */
   return !!t.closest(
     'button,[role="button"],#hud,#touch,#pause,#startScreen,#endScreen,' +
-    '#spPanel,#mpPanel,#cfgPanel,#bagPanel,#shop,#mapPanel,#mapWrap'
+    '#spPanel,#mpPanel,#cfgPanel,#bagPanel,#shop,#mapPanel,#mapWrap,' +
+    '#smithPanel,#hotbar'
   );
 }
 let uiPress = false;
@@ -8498,7 +9124,9 @@ function enemyShoot(e, atPoint, opt){
      contact, and the shots that do land later feel earned. */
   const warm = atPoint ? 2.2 : lerp(1.55, 0.80, clamp((e.engage||0)/5.5, 0, 1));
   const errBase = (opt && opt.err !== undefined) ? opt.err : P.err;
-  const err = errBase * warm * (1 + dist*0.028) * (1 + speed*0.075) * (_tgt.crouch?1.15:1) * EV_MOD.err;
+  /* 强袭（mission）单独放宽 AI 准头：单机一人扛十个人，原误差太"职业" */
+  const assaultErr = (G.mode !== 'survival' && G.mode !== 'pvp') ? ASSAULT_ERR_MUL : 1;
+  const err = errBase * warm * (1 + dist*0.028) * (1 + speed*0.075) * (_tgt.crouch?1.15:1) * EV_MOD.err * assaultErr;
   const dir = aim.clone().sub(muzzle).normalize();
   const rgt = new THREE.Vector3().crossVectors(dir, _up).normalize();
   const upv = new THREE.Vector3().crossVectors(rgt, dir).normalize();
@@ -8690,7 +9318,7 @@ function updateCombatDirector(){
     return d;
   };
   _active.sort((a,b)=> near(a) - near(b));
-  const shooters = G.maxShooters || MAX_SHOOTERS;
+  const shooters = (G.mode === 'mission') ? ASSAULT_SHOOTERS : (G.maxShooters || MAX_SHOOTERS);
   for (let i=0;i<Math.min(shooters,_active.length);i++) _active[i].mayFire = true;
 }
 
@@ -10299,6 +10927,7 @@ function resetWorldState(){
   INV.nades = { frag: mode==='survival' ? 0 : 2, flash: 0 };
   player.slots = mode==='survival' ? ['pistol', null] : ['rifle','pistol'];
   player.nadeKind = 'frag';
+  try{ window.gearReset && window.gearReset(mode); }catch(_rErr){}
   player.nadeMode = false; player.cooking = null; player.cookT = 0; player.cookFuse = 0;
   player.nadeCd = 0; player.slideT = 0; player.slideCd = 0; player.deafenT = 0;
   const fz = $('fuse'); if (fz) fz.classList.remove('on');
@@ -10386,7 +11015,7 @@ function resetWorldState(){
   updatePvpScore();
   G.over=false; G.dmgFlash=0; G.lowPulse=0; G.hbTimer=0; G.killFlash=0;
   NET.spectate=false; hideNetBanner();
-  G.grace=GRACE_TIME;
+  G.grace = (G.mode === 'mission') ? ASSAULT_GRACE : GRACE_TIME;
   _sweepAt=0; _noiseCd=0;
   { const kc = $('killCount'); if (kc) kc.textContent = '0'; }
   updateVitalsUI(); updateAmmoUI();
@@ -12911,6 +13540,7 @@ function frame(now){
   if (dt > 0.05) dt = 0.05;          // avoid tunneling after a stall
   if (dt <= 0) return;
   adaptive(dt);
+  try{ window.g_gearTick && window.g_gearTick(dt); }catch(_gErr){}
   mapTick(dt, now);
 
   const mdx = mouseDX, mdy = mouseDY;
@@ -13035,6 +13665,11 @@ function frame(now){
   compMat.uniforms.ab.value   = 0.18;
 
   /* ---------------- render ---------------- */
+  /* 全屏面板（背包/商店/改装）盖住时，3D 只剩背板后一点影子，没必要每帧跑
+     整套「场景 + 枪模 + 泛光 + 合成」。世界不暂停，只是少画几帧。 */
+  if (window.g_gearRenderGate && window.g_gearRenderGate()){
+    /* skip render this frame */
+  } else {
   renderer.setRenderTarget(sceneRT);
   renderer.clear(true,true,true);
   renderer.render(scene, camera);
@@ -13058,6 +13693,7 @@ function frame(now){
   compMat.uniforms.tScene.value = sceneRT.texture;
   compMat.uniforms.tBloom.value = bloomA.texture;
   blit(compMat, null);
+  }
 }
 /* =========================================================================
    24. 多地图 —— 仓库区 / 灰蓝街区 / 战术网格
@@ -13914,7 +14550,12 @@ function mapRenderPicker(){
   const box = $('mapList');
   if (!box) return;
   box.innerHTML = '';
-  for (const m of MAP_LIST){
+  /* 卡片顺序：把「灰蓝街区」和「战术网格」两张图的入口对调。
+     只改主菜单里的展示次序 —— MAP_LIST 本身、默认图和切图逻辑都按 id 走，
+     动数组会牵连 MAP_LIST[0] 之类的索引，所以这里只排一份展示副本。 */
+  const order = MAP_LIST.slice();
+  if (order.length >= 3){ const t = order[1]; order[1] = order[2]; order[2] = t; }
+  for (const m of order){
     const b = document.createElement('button');
     b.className = 'map-card' + (m.id === MAP.id ? ' act' : '');
     b.dataset.map = m.id;
@@ -14217,6 +14858,1744 @@ function districtSyncUI(){
   window.__tacDistrictReady = true;
 })();
 
+
+
+/* ================= 军械系统层（背包 / 快捷栏 / 商店 / 改装） ================ */
+/* =====================================================================
+   军械系统层 · 背包 / 快捷栏 / 商店 / 枪械改装
+   追加在主脚本之后，作为全局增强层：
+     - 商店只负责「买」，买到的都进背包
+     - 背包只负责「存」和「装」，拖拽是唯一入口
+     - 快捷栏只负责「战斗中快速取用」
+     - 改装只负责「改枪」，配件必须已在背包里
+   ===================================================================== */
+(function(){
+'use strict';
+
+/* ============================ 目录 ============================ */
+
+const MEDS = {
+  medkit : { name:'医疗包',     cat:'med', heal:50,  dur:2.5, price:180, icon:'#e8eef3',
+             desc:'恢复 50 点生命 · 使用中不能开火' },
+  bandage: { name:'急救绷带',   cat:'med', heal:25,  dur:1.2, price:110, icon:'#dfe6ec',
+             desc:'恢复 25 点生命 · 速度最快' },
+  adren  : { name:'肾上腺素',   cat:'med', dur:1.5, price:360, icon:'#ff9d5c',
+             buff:{ speed:0.15, dr:0.10, t:10 }, desc:'10 秒内移速 +15%、受伤 -10%' },
+  pain   : { name:'止痛药',     cat:'med', heal:30, dur:1.0, price:280, icon:'#ffd27a',
+             regen:{ amt:20, t:10 }, desc:'恢复 30 生命，之后 10 秒持续回复 20' },
+  armorfix:{ name:'护甲修复包', cat:'med', armor:50, dur:3.0, price:240, icon:'#8fd0ff',
+             desc:'修复 50 点护甲值' }
+};
+
+const AMMO = {
+  '5.56': { name:'5.56mm 弹药盒', price:260, add:60, guns:['rifle','sniper'], icon:'#c9a227',
+            desc:'步枪 / 狙击枪 · 备弹 +60' },
+  '12ga': { name:'12 号霰弹盒',  price:220, add:24, guns:['shotgun'],         icon:'#b4553a',
+            desc:'为 KS-12 补充 24 发备弹' },
+  '9mm' : { name:'9mm 手枪弹盒', price:170, add:45, guns:['pistol'],          icon:'#7ea8c9',
+            desc:'为 P-9 补充 45 发备弹' }
+};
+
+const ARMOR_ITEMS = {
+  armorup : { name:'护甲升级', price:250, price2:520, price3:900,
+              desc:'提高护甲上限与伤害减免（Lv1 → Lv3）' },
+  helmet  : { name:'战术头盔', price:620, icon:'#8fd0ff',
+              desc:'护甲上限 +25，受到伤害额外 -8%' },
+  plate   : { name:'防弹插板', price:460, icon:'#9aa4ac',
+              desc:'一次性插入 50 点护甲（不进入背包）' }
+};
+
+/* 配件表：slot = 槽位；guns = null 表示通用；caliber = 口径限定 */
+const PARTS = {
+  /* ---- 枪口 ---- */
+  suppressor : { name:'消音器',      slot:'muzzle', guns:null, price:420, tag:'枪口',
+                 desc:'枪声传播距离减半 · 枪口焰消失 · 后坐力 -5%', acc:'#5c646c',
+                 mods:{ noise:0.5, recoilV:0.95, recoilH:0.95 }, vis:{mz:'tube', len:20} },
+  tacsupp    : { name:'战术消音器',  slot:'muzzle', guns:null, price:760, tag:'枪口',
+                 desc:'消音 + 后坐力 -8%，伤害 -5%', acc:'#4a5259',
+                 mods:{ noise:0.45, recoilV:0.92, recoilH:0.92, damage:0.95 }, vis:{mz:'tube', len:26} },
+  compensator: { name:'补偿器',      slot:'muzzle', guns:null, price:380, tag:'枪口',
+                 desc:'垂直后坐力 -18%、水平 -10% · 枪口焰 +20%', acc:'#7d858c',
+                 mods:{ recoilV:0.82, recoilH:0.90 }, vis:{mz:'comp', len:10} },
+  flashhider : { name:'消焰器',      slot:'muzzle', guns:null, price:190, tag:'枪口',
+                 desc:'枪口焰完全消失，开火后不易被发现', acc:'#6b737a',
+                 mods:{ noise:0.82 }, vis:{mz:'cone', len:8} },
+  heavycomp  : { name:'重型制退器',  slot:'muzzle', guns:['rifle','sniper'], price:640, tag:'枪口',
+                 desc:'后坐力 -28%，但举枪速度 -15%、移速 -5%', acc:'#5a5f66',
+                 mods:{ recoilV:0.72, recoilH:0.78, draw:1.15, moveSpread:1.05 }, vis:{mz:'comp', len:14} },
+  choke      : { name:'收束器',      slot:'muzzle', guns:['shotgun'], price:300, tag:'枪口',
+                 desc:'霰弹散布 -30%，有效射程 +40%', acc:'#8a6f3a',
+                 mods:{ spread:0.70, falloff:1.4 }, vis:{mz:'ring', len:8} },
+  bell       : { name:'喇叭口',      slot:'muzzle', guns:['shotgun'], price:170, tag:'枪口',
+                 desc:'散布 +25%，近距离伤害 +10%', acc:'#8a6f3a',
+                 mods:{ spread:1.25, damage:1.10 }, vis:{mz:'bell', len:10} },
+
+  /* ---- 瞄具 ---- */
+  reddot   : { name:'红点瞄准镜',   slot:'optic', guns:null, price:210, tag:'瞄具',
+               desc:'开镜速度 +10%，中距离精度 +5%', acc:'#c0483c',
+               mods:{ adsTime:0.90, adsSpread:0.95 }, vis:{op:'dot', len:10} },
+  holo     : { name:'全息瞄准镜',   slot:'optic', guns:null, price:290, tag:'瞄具',
+               desc:'开镜速度 +5%，瞄准时移动速度 +10%', acc:'#3f7fb5',
+               mods:{ adsTime:0.95, moveSpread:0.90 }, vis:{op:'holo', len:12} },
+  scope2   : { name:'2 倍镜',       slot:'optic', guns:['rifle','sniper'], price:520, tag:'瞄具',
+               desc:'开镜倍率 ×2，远距离精度 +10%，开镜 -10%', acc:'#6d5a3a',
+               mods:{ adsFov:0.55, adsTime:1.10, adsSpread:0.90 }, vis:{op:'scope', len:28} },
+  scope4   : { name:'4 倍镜',       slot:'optic', guns:['rifle','sniper'], price:980, tag:'瞄具',
+               desc:'倍率 ×4，精度 +20%，开镜 -25%、视野变窄', acc:'#5a4a30',
+               mods:{ adsFov:0.30, adsTime:1.25, adsSpread:0.80 }, vis:{op:'scope', len:44} },
+  laser    : { name:'激光指示器',   slot:'optic', guns:['rifle','shotgun','pistol'], price:430, tag:'瞄具',
+               desc:'腰射散布 -30%，瞄准时精度 +5%', acc:'#c98a3a',
+               mods:{ spread:0.70, adsSpread:0.95 }, vis:{op:'laser', len:8} },
+  microdot : { name:'微型红点',     slot:'optic', guns:['pistol'], price:180, tag:'瞄具',
+               desc:'手枪专用：开镜速度 +15%、精度 +8%', acc:'#b04a44',
+               mods:{ adsTime:0.85, adsSpread:0.92 }, vis:{op:'dot', len:7} },
+  thermal  : { name:'热成像镜',     slot:'optic', guns:['rifle','sniper'], price:1600, tag:'瞄具',
+               desc:'敌人高亮（可穿烟），开镜速度 -40%', acc:'#2f7f6a',
+               mods:{ adsFov:0.40, adsTime:1.40 }, vis:{op:'thermal', len:38} },
+
+  /* ---- 握把 ---- */
+  vertgrip : { name:'垂直握把',     slot:'grip', guns:null, price:170, tag:'握把',
+               desc:'垂直后坐力 -15%', acc:'#7a5f3a', mods:{ recoilV:0.85 }, vis:{gr:'vert'} },
+  anglegrip: { name:'直角握把',     slot:'grip', guns:null, price:170, tag:'握把',
+               desc:'水平后坐力 -20%', acc:'#7a5f3a', mods:{ recoilH:0.80 }, vis:{gr:'ang'} },
+  lightgrip: { name:'轻型握把',     slot:'grip', guns:null, price:320, tag:'握把',
+               desc:'开镜速度 +12%，后坐力回复更快', acc:'#9aa4ac',
+               mods:{ adsTime:0.88, spreadRecover:1.2 }, vis:{gr:'light'} },
+  thumbgrip: { name:'拇指握把',     slot:'grip', guns:null, price:300, tag:'握把',
+               desc:'举枪速度 +18%', acc:'#8a6f3a', mods:{ draw:0.82 }, vis:{gr:'thumb'} },
+  lasergrip : { name:'激光握把',     slot:'grip', guns:null, price:420, tag:'握把',
+               desc:'腰射散布 -25%，开镜散布 -5%', acc:'#c98a3a',
+               mods:{ spread:0.75, adsSpread:0.95 }, vis:{gr:'laser'} },
+  tacgrip  : { name:'战术前握把',   slot:'grip', guns:null, price:330, tag:'握把',
+               desc:'垂直 -8%、水平 -8%，移动速度 -3%', acc:'#5f666c',
+               mods:{ recoilV:0.92, recoilH:0.92, moveSpread:1.03 }, vis:{gr:'tac'} },
+  foldgrip  : { name:'折叠握把',     slot:'grip', guns:null, price:140, tag:'握把',
+               desc:'无后坐加成，收起时移动速度 +5%', acc:'#77828a',
+               mods:{ moveSpread:0.95 }, vis:{gr:'fold'} },
+
+  /* ---- 弹匣 / 供弹 ---- */
+  m56ext   : { name:'5.56 扩容弹匣', slot:'mag', guns:null, caliber:'5.56', price:360, tag:'弹匣',
+               desc:'弹容量 +50%，换弹时间 +20%', acc:'#8a7a45',
+               mods:{ mag:1.5, reload:1.2 }, vis:{mg:'long'} },
+  m56quick : { name:'5.56 快速弹匣', slot:'mag', guns:null, caliber:'5.56', price:400, tag:'弹匣',
+               desc:'换弹时间 -30%，弹容量不变', acc:'#4d7f6a',
+               mods:{ reload:0.70 }, vis:{mg:'quick'} },
+  m56qext  : { name:'5.56 快速扩容弹匣', slot:'mag', guns:null, caliber:'5.56', price:820, tag:'弹匣',
+               desc:'弹容量 +25%，换弹时间 -20%', acc:'#3f7f5f',
+               mods:{ mag:1.25, reload:0.80 }, vis:{mg:'quick'} },
+  m56drum  : { name:'鼓形弹匣',     slot:'mag', guns:['rifle'], caliber:'5.56', price:1250, tag:'弹匣',
+               desc:'弹容量 +120%，换弹 +60%，移速 -8%、举枪 -20%', acc:'#6b5a3a',
+               mods:{ mag:2.2, reload:1.6, moveSpread:1.08, draw:1.2 }, vis:{mg:'drum'} },
+  m56light : { name:'5.56 轻量弹匣', slot:'mag', guns:null, caliber:'5.56', price:200, tag:'弹匣',
+               desc:'换弹时间 -15%，弹容量 -20%', acc:'#9aa4ac',
+               mods:{ mag:0.8, reload:0.85 }, vis:{mg:'light'} },
+  m56ap    : { name:'穿甲弹匣',     slot:'mag', guns:null, caliber:'5.56', price:880, tag:'弹匣',
+               desc:'伤害 +8%（对护甲 +20%），弹容量 -10%', acc:'#7f4a4a',
+               mods:{ damage:1.08, mag:0.9 }, vis:{mg:'ap'} },
+  m9ext    : { name:'9mm 扩容弹匣',  slot:'mag', guns:null, caliber:'9mm', price:280, tag:'弹匣',
+               desc:'弹容量 +50%，换弹时间 +20%', acc:'#8a7a45',
+               mods:{ mag:1.5, reload:1.2 }, vis:{mg:'long'} },
+  m9quick  : { name:'9mm 快速弹匣',  slot:'mag', guns:null, caliber:'9mm', price:320, tag:'弹匣',
+               desc:'换弹时间 -30%', acc:'#4d7f6a', mods:{ reload:0.70 }, vis:{mg:'quick'} },
+  loader12 : { name:'快速装填器',   slot:'feed', guns:['shotgun'], price:340, tag:'供弹',
+               desc:'KS-12 专用：每次装填 +1 发，装填速度 +40%', acc:'#8a6f3a',
+               mods:{ magAdd:1, reload:0.6 }, vis:{mg:'none'} }
+};
+
+/* 枪械槽位表：每把枪有哪些槽 */
+const GUN_SLOTS = {
+  rifle  : ['muzzle','optic','grip','mag'],
+  shotgun: ['muzzle','optic','grip','feed'],
+  pistol : ['muzzle','optic'],
+  sniper : ['muzzle','optic','grip','mag']
+};
+const SLOT_CN = { muzzle:'枪口', optic:'瞄具', grip:'握把', mag:'弹匣', feed:'供弹' };
+
+/* 枪械口径（弹匣兼容性用） */
+const GUN_CAL = { rifle:'5.56', sniper:'5.56', shotgun:'12ga', pistol:'9mm' };
+
+/* 侧视图基础造型：viewBox 内坐标 + 锚点 */
+const GUN_ART = {
+  rifle  : { vb:'0 0 136 46',
+    gripDef :'<path d="M20 26 L30 26 L27 41 L18 41 Z" fill="#7b838a" stroke="#262c31" stroke-width=".9"/>'+
+             '<path d="M21 30 L28 30" stroke="#5a6167" stroke-width="1.2"/>',
+    magDef  :'<path d="M36 27 L48 27 L46 41 L38 41 Z" fill="#6d757c" stroke="#262c31" stroke-width=".9"/>'+
+             '<path d="M38.5 31 L46 31" stroke="#4b5259" stroke-width="1"/>',
+    body:'<path d="M2 18 L14 14 L18 16 L18 28 L4 31 Z" fill="#7f878e" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M2 18 L6.5 17 L6.5 30 L3 31 Z" fill="#4d545a"/>'+
+         '<rect x="16" y="14" width="46" height="13" rx="1.5" fill="#99a1a8" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="16" y="14" width="46" height="3.4" fill="#bcc4ca"/>'+
+         '<rect x="28" y="17" width="16" height="5" rx="1" fill="#39414a"/>'+
+         '<rect x="58" y="16" width="6" height="3" rx=".6" fill="#6b737a"/>'+
+         '<rect x="62" y="15" width="38" height="11" rx="2" fill="#7c848b" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="62" y="15" width="38" height="3" fill="#98a0a7"/>'+
+         '<rect x="100" y="18.5" width="26" height="4.5" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M112 18.5 L116 11 L120 11 L120 18.5 Z" fill="#8b939a"/>'+
+         '<path d="M44 27 Q44 35 52 35 L55 35 L55 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:126,y:20.5}, op:{x:50,y:15}, mg:{x:52,y:28}, gr:{x:22,y:27} },
+
+  shotgun: { vb:'0 0 150 46',
+    gripDef :'<path d="M26 27 L36 27 L33 42 L24 42 Z" fill="#7b838a" stroke="#262c31" stroke-width=".9"/>',
+    magDef  :'<rect x="52" y="22" width="58" height="6" rx="1.5" fill="#6f777e" stroke="#262c31" stroke-width=".9"/>'+
+             '<rect x="54" y="24" width="54" height="1.6" fill="#525a61"/>',
+    body:'<path d="M2 19 L16 15 L21 17 L21 29 L5 32 Z" fill="#7f878e" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M2 19 L6.5 18 L6.5 31 L3 32 Z" fill="#4d545a"/>'+
+         '<rect x="20" y="15" width="32" height="13" rx="1.5" fill="#99a1a8" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="20" y="15" width="32" height="3.4" fill="#bcc4ca"/>'+
+         '<rect x="28" y="18" width="12" height="4.5" rx="1" fill="#39414a"/>'+
+         '<rect x="50" y="15" width="72" height="5" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<rect x="74" y="17" width="26" height="11" rx="2" fill="#8a5a3c" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M76 21 L98 21 M76 25 L98 25" stroke="#6d452c" stroke-width="1.1"/>'+
+         '<path d="M118 15 L120 9.5 L124 9.5 L124 15 Z" fill="#8b939a"/>'+
+         '<path d="M30 28 Q30 36 38 36 L41 36 L41 28" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:122,y:17.5}, op:{x:40,y:15.5}, mg:{x:86,y:23.5}, gr:{x:31,y:28} },
+
+  pistol : { vb:'0 0 84 46',
+    gripDef :'<path d="M14 28 L32 28 L28 43 L12 43 Z" fill="#7b838a" stroke="#262c31" stroke-width=".9"/>'+
+             '<path d="M16 33 L29 33 M16 37 L28 37" stroke="#5a6167" stroke-width="1.1"/>',
+    magDef  :'<rect x="13" y="41" width="16" height="2.6" rx=".8" fill="#4d545a"/>',
+    body:'<rect x="10" y="12" width="56" height="11" rx="1.5" fill="#99a1a8" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="10" y="12" width="56" height="3.2" fill="#bcc4ca"/>'+
+         '<path d="M14 13 L14 22 M18 13 L18 22 M22 13 L22 22" stroke="#5d656c" stroke-width="1.3"/>'+
+         '<rect x="62" y="15" width="9" height="5" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M58 12 L60 8 L63 8 L63 12 Z" fill="#8b939a"/>'+
+         '<rect x="12" y="23" width="44" height="5.5" rx="1" fill="#6f777e" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M26 28.5 Q26 37 33 37 L36 37 L36 28.5" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:70,y:17.5}, op:{x:40,y:12}, mg:{x:21,y:29}, gr:{x:21,y:29} },
+
+  sniper : { vb:'0 0 160 46',
+    gripDef :'<path d="M24 26 L34 26 L31 41 L22 41 Z" fill="#7b838a" stroke="#262c31" stroke-width=".9"/>',
+    magDef  :'<path d="M38 27 L48 27 L46 38 L40 38 Z" fill="#6d757c" stroke="#262c31" stroke-width=".9"/>',
+    body:'<path d="M2 18 L18 13 L26 15 L26 29 L6 32 Z" fill="#7f878e" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M2 18 L7 17 L7 31 L3 32 Z" fill="#4d545a"/>'+
+         '<rect x="8" y="12.5" width="15" height="4.5" rx="1" fill="#6b737a"/>'+
+         '<rect x="24" y="14" width="40" height="13" rx="1.5" fill="#99a1a8" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="24" y="14" width="40" height="3.4" fill="#bcc4ca"/>'+
+         '<rect x="34" y="17" width="14" height="5" rx="1" fill="#39414a"/>'+
+         '<rect x="62" y="16" width="36" height="9" rx="2" fill="#7c848b" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="98" y="18" width="54" height="4" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M140 18 L143 11.5 L147 11.5 L147 18 Z" fill="#8b939a"/>'+
+         '<path d="M48 27 Q48 35 56 35 L59 35 L59 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:152,y:20}, op:{x:44,y:14}, mg:{x:50,y:27}, gr:{x:24,y:27} }
+};
+
+/* ============================ 状态 ============================ */
+
+/* INV / player / WEAPONS / WIDX / NADES 直接复用主脚本作用域中的同名绑定 */
+if (!INV.meds)  INV.meds  = {};        // 药品数量
+if (!INV.parts) INV.parts = {};        // 配件数量
+if (!INV.mods)  INV.mods  = {};        // { gunId: {slot: partId} }
+if (!INV.seen)  INV.seen  = {};
+
+if (!player.medKind) player.medKind = null;
+if (!player.medUse)  player.medUse  = null;   // {id,t,dur}
+player.gearSpeedMul = 1;
+player.gearDmgRed   = 0;
+
+/* 基准数值快照：改装只改「有效值」，基准永远留着做对比 */
+if (!WEAPONS[0].__base){
+  WEAPONS.forEach(w=>{
+    w.__base = {
+      magSize:w.magSize, damage:w.damage, recoilKick:w.recoilKick, recoilRot:w.recoilRot,
+      spreadBase:w.spreadBase, spreadMax:w.spreadMax, adsSpread:w.adsSpread,
+      adsTime:w.adsTime, adsFov:w.adsFov, reloadTime:w.reloadTime, drawTime:w.drawTime,
+      moveSpread:w.moveSpread, noise:w.noise, spreadRecover:w.spreadRecover,
+      falloffStart:w.falloffStart, falloffRange:w.falloffRange, scope:!!w.scope,
+      reserve:w.reserve, maxReserve:w.maxReserve||w.reserve
+    };
+  });
+}
+
+/* ============================ 小工具 ============================ */
+
+const $ = id=>document.getElementById(id);
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+let toastEl=null, toastT=0;
+function toast(msg){
+  if(!toastEl){ toastEl=document.createElement('div'); toastEl.className='gear-toast'; document.body.appendChild(toastEl); }
+  toastEl.textContent=msg; toastEl.classList.add('on');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>toastEl.classList.remove('on'), 1600);
+}
+
+/* ============================ 配件 / 图标 ============================ */
+
+function partIcon(id, size){
+  const p = PARTS[id]; if(!p) return '';
+  const a = p.acc || '#8a939c', s = size || 26;
+  const inner = {
+    muzzle:'<rect x="3" y="10" width="16" height="6" rx="1" fill="'+a+'"/><rect x="19" y="8" width="4" height="10" rx="1" fill="#5b6269"/>',
+    optic :'<path d="M6 20 L6 9 L22 9 L22 20" stroke="'+a+'" stroke-width="2.4" fill="none"/><circle cx="14" cy="14" r="3.4" fill="'+a+'"/><rect x="2" y="18" width="24" height="2.6" fill="#5b6269"/>',
+    grip  :'<path d="M9 4 L15 4 L15 14 L21 22 L15 22 L9 13 Z" fill="'+a+'"/>',
+    mag   :'<path d="M8 4 L18 4 L17 23 L11 23 Z" fill="'+a+'"/><rect x="8" y="8" width="10" height="2" fill="#2f3438"/>',
+    feed  :'<circle cx="8" cy="8" r="5" fill="'+a+'"/><circle cx="19" cy="16" r="5" fill="'+a+'"/>'
+  }[p.slot] || '';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none">'+inner+'</svg>';
+}
+function medIcon(id, size){
+  const m = MEDS[id]; if(!m) return '';
+  const s = size||28, c = m.icon;
+  const inner = {
+    medkit :'<rect x="4" y="7" width="20" height="16" rx="2" fill="#2c3238" stroke="'+c+'" stroke-width="1.6"/><path d="M14 10v10M9 15h10" stroke="'+c+'" stroke-width="2.6"/>',
+    bandage:'<circle cx="14" cy="14" r="9" fill="#e6ebef"/><circle cx="14" cy="14" r="4" fill="#b9c2c9"/><path d="M14 5v18" stroke="#b9c2c9" stroke-width="1.4"/>',
+    adren :'<path d="M11 3h6v9l4 6v7H7v-7l4-6z" fill="#2c3238" stroke="'+c+'" stroke-width="1.6"/><path d="M9 18h10" stroke="'+c+'" stroke-width="1.6"/>',
+    pain  :'<rect x="4" y="10" width="20" height="9" rx="4.5" fill="'+c+'"/><path d="M14 10v9" stroke="#1a1e22" stroke-width="1.8"/>',
+    armorfix:'<path d="M14 4 L23 8 V15 C23 21 19 24 14 25 C9 24 5 21 5 15 V8 Z" fill="#2c3238" stroke="'+c+'" stroke-width="1.6"/>'
+  }[id] || '';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none">'+inner+'</svg>';
+}
+function ammoIcon(cal, size){
+  const s=size||28, a=AMMO[cal]; if(!a) return '';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none">'+
+    '<rect x="4" y="7" width="20" height="15" rx="2" fill="#3a3126" stroke="'+a.icon+'" stroke-width="1.5"/>'+
+    '<rect x="7" y="10" width="14" height="3" fill="'+a.icon+'" opacity=".8"/>'+
+    '<text x="14" y="21" font-size="6.5" fill="'+a.icon+'" text-anchor="middle" font-family="monospace">'+cal+'</text></svg>';
+}
+function armorIcon(id, size){
+  const s=size||28;
+  if(id==='armorup') return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none"><path d="M14 4 L23 8 V15 C23 21 19 24 14 25 C9 24 5 21 5 15 V8 Z" fill="#2c3238" stroke="#ffb340" stroke-width="1.6"/><path d="M10 14l3 3 6-7" stroke="#ffb340" stroke-width="2"/></svg>';
+  if(id==='helmet') return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none"><path d="M5 15a9 9 0 0 1 18 0v3H5z" fill="#2c3238" stroke="#8fd0ff" stroke-width="1.6"/><path d="M4 18h20v2H4z" fill="#8fd0ff"/></svg>';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none"><rect x="8" y="5" width="12" height="18" rx="1.5" fill="#3a4046" stroke="#9aa4ac" stroke-width="1.5"/><path d="M10 9h8M10 13h8M10 17h8" stroke="#9aa4ac" stroke-width="1"/></svg>';
+}
+
+/* 枪械侧视图：把已装配件画在枪上（快捷栏、背包、改装界面共用同一张图） */
+function gunSVG(gunId, w){
+  const art = GUN_ART[gunId]; if(!art) return '';
+  const mods = (INV.mods && INV.mods[gunId]) || {};
+  let s = '';
+
+  /* ---- 握把 ---- */
+  const gp = mods.grip ? PARTS[mods.grip] : null;
+  if(gp && gp.vis && gp.vis.gr){
+    const g=gp.vis.gr, a=gp.acc||'#7a5f3a', x=art.gr.x, y=art.gr.y;
+    if(g==='vert') s += '<path d="M'+(x+4)+' '+(y-1)+' L'+(x+10)+' '+(y-1)+' L'+(x+12)+' '+(y+11)+' L'+(x+7)+' '+(y+11)+' Z" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>'+
+                        '<path d="M'+(x+6)+' '+(y+3)+' L'+(x+11)+' '+(y+3)+'" stroke="#00000055" stroke-width="1.2"/>';
+    else if(g==='ang') s += '<path d="M'+(x+3)+' '+(y-1)+' L'+(x+10)+' '+(y-1)+' L'+(x+14)+' '+(y+11)+' L'+(x+8)+' '+(y+11)+' Z" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>';
+    else if(g==='light') s += '<path d="M'+(x+3)+' '+(y-1)+' L'+(x+9)+' '+(y-1)+' L'+(x+10)+' '+(y+10)+' L'+(x+4)+' '+(y+10)+' Z" fill="none" stroke="'+a+'" stroke-width="1.8"/>';
+    else if(g==='thumb') s += '<circle cx="'+(x+6)+'" cy="'+(y+2)+'" r="4" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>';
+    else if(g==='laser'){ s += '<rect x="'+(x+2)+'" y="'+y+'" width="7" height="7" rx="1.2" fill="'+a+'" stroke="#262c31" stroke-width=".8"/>';
+                           s += '<path d="M'+(x+9)+' '+(y+3.5)+' L'+(x+22)+' '+(y+3.5)+'" stroke="#ff6b5e" stroke-width="1.3" stroke-dasharray="3 2"/>'; }
+    else if(g==='tac') s += '<path d="M'+(x+3)+' '+(y-1)+' L'+(x+11)+' '+(y-1)+' L'+(x+13)+' '+(y+12)+' L'+(x+6)+' '+(y+12)+' Z" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>';
+    else if(g==='fold') s += '<rect x="'+(x+3)+'" y="'+y+'" width="8" height="3.4" rx="1.2" fill="'+a+'" stroke="#262c31" stroke-width=".8"/>';
+  } else s += art.gripDef || '';
+
+  /* ---- 弹匣 / 供弹 ---- */
+  const mp = mods.mag ? PARTS[mods.mag] : null;
+  const mv = mp && mp.vis ? mp.vis.mg : null;
+  if(mv==='drum'){
+    s += '<circle cx="'+(art.mg.x+4)+'" cy="'+(art.mg.y+9)+'" r="8.5" fill="'+(mp.acc||'#6b5a3a')+'" stroke="#262c31" stroke-width=".9"/>'+
+         '<circle cx="'+(art.mg.x+4)+'" cy="'+(art.mg.y+9)+'" r="3.4" fill="#3a3226"/>';
+  } else if(mv==='long'){
+    s += '<path d="M'+(art.mg.x-1)+' '+(art.mg.y-1)+' L'+(art.mg.x+11)+' '+(art.mg.y-1)+' L'+(art.mg.x+9)+' '+(art.mg.y+20)+' L'+(art.mg.x+2)+' '+(art.mg.y+20)+' Z" fill="'+(mp.acc||'#8a7a45')+'" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M'+(art.mg.x+1)+' '+(art.mg.y+7)+' L'+(art.mg.x+9)+' '+(art.mg.y+7)+' M'+(art.mg.x+1)+' '+(art.mg.y+12)+' L'+(art.mg.x+9)+' '+(art.mg.y+12)+'" stroke="#00000044" stroke-width="1"/>';
+  } else if(mv==='quick'){
+    s += '<path d="M'+(art.mg.x-1)+' '+(art.mg.y-1)+' L'+(art.mg.x+11)+' '+(art.mg.y-1)+' L'+(art.mg.x+9)+' '+(art.mg.y+13)+' L'+(art.mg.x+1)+' '+(art.mg.y+13)+' Z" fill="'+(mp.acc||'#4d7f6a')+'" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M'+(art.mg.x+3)+' '+(art.mg.y+2)+' L'+(art.mg.x+8)+' '+(art.mg.y+2)+'" stroke="#ffffff66" stroke-width="1.4"/>';
+  } else if(mv==='ap'){
+    s += '<path d="M'+(art.mg.x-1)+' '+(art.mg.y-1)+' L'+(art.mg.x+11)+' '+(art.mg.y-1)+' L'+(art.mg.x+9)+' '+(art.mg.y+14)+' L'+(art.mg.x+1)+' '+(art.mg.y+14)+' Z" fill="'+(mp.acc||'#7f4a4a')+'" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M'+(art.mg.x+2)+' '+(art.mg.y+4)+' L'+(art.mg.x+2)+' '+(art.mg.y+11)+'" stroke="#ffd27a" stroke-width="1.3"/>';
+  } else if(mv==='light'){
+    s += '<path d="M'+(art.mg.x)+' '+(art.mg.y-1)+' L'+(art.mg.x+9)+' '+(art.mg.y-1)+' L'+(art.mg.x+7)+' '+(art.mg.y+9)+' L'+(art.mg.x+2)+' '+(art.mg.y+9)+' Z" fill="'+(mp.acc||'#9aa4ac')+'" stroke="#262c31" stroke-width=".9"/>';
+  } else s += art.magDef || '';
+
+  /* ---- 枪身 ---- */
+  s += art.body;
+
+  /* ---- 枪口装置 ---- */
+  const mz = mods.muzzle ? PARTS[mods.muzzle] : null;
+  if(mz && mz.vis && mz.vis.mz){
+    const a=mz.acc||'#5c646c', v=mz.vis.mz, L=mz.vis.len, x=art.mz.x, y=art.mz.y;
+    if(v==='tube') s += '<rect x="'+(x-3)+'" y="'+(y-4)+'" width="'+L+'" height="8" rx="4" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>'+
+                        '<rect x="'+(x+L-7)+'" y="'+(y-4)+'" width="3.4" height="8" fill="#3f454a"/>';
+    else if(v==='comp'){ s += '<rect x="'+x+'" y="'+(y-4.5)+'" width="'+L+'" height="9" rx="1" fill="'+a+'" stroke="#262c31" stroke-width=".9"/>';
+                         for(let i=0;i<3;i++) s += '<rect x="'+(x+1.6+i*3)+'" y="'+(y-6)+'" width="1.3" height="2.4" fill="#c9ced3"/>'; }
+    else if(v==='cone') s += '<path d="M'+x+' '+(y-4)+' L'+(x+L)+' '+(y-7)+' L'+(x+L)+' '+(y+7)+' L'+x+' '+(y+4)+' Z" fill="'+a+'" stroke="#262c31" stroke-width=".8"/>';
+    else if(v==='ring') s += '<rect x="'+x+'" y="'+(y-4.5)+'" width="'+L+'" height="9" rx="1" fill="none" stroke="'+a+'" stroke-width="2.6"/>';
+    else if(v==='bell') s += '<path d="M'+x+' '+(y-3.5)+' L'+(x+L)+' '+(y-7.5)+' L'+(x+L)+' '+(y+7.5)+' L'+x+' '+(y+3.5)+' Z" fill="'+a+'" stroke="#262c31" stroke-width=".8"/>';
+  }
+
+  /* ---- 瞄具 ---- */
+  const op = mods.optic ? PARTS[mods.optic] : null;
+  if(op && op.vis && op.vis.op){
+    const a=op.acc||'#c0483c', v=op.vis.op, L=op.vis.len, x=art.op.x, y=art.op.y;
+    if(v==='dot'){ s += '<rect x="'+(x-L/2)+'" y="'+(y-9)+'" width="'+L+'" height="7.5" rx="1.5" fill="#232a30" stroke="#262c31" stroke-width=".8"/>';
+                   s += '<circle cx="'+x+'" cy="'+(y-5.2)+'" r="2.1" fill="#ff4d3d"/>'; }
+    else if(v==='holo'){ s += '<rect x="'+(x-L/2)+'" y="'+(y-10)+'" width="'+L+'" height="8.5" rx="1.5" fill="#232a30" stroke="#262c31" stroke-width=".8"/>';
+                        s += '<rect x="'+(x-L/2+1.6)+'" y="'+(y-8.4)+'" width="'+(L-3.2)+'" height="5.2" fill="#2f6f8a" opacity=".85"/>'; }
+    else if(v==='scope'){ s += '<rect x="'+(x-L/2)+'" y="'+(y-10)+'" width="'+L+'" height="8" rx="2.4" fill="#232a30" stroke="#262c31" stroke-width=".8"/>';
+                          s += '<circle cx="'+(x+L/2-2.4)+'" cy="'+(y-6)+'" r="3.2" fill="#3f7f6a"/>';
+                          s += '<rect x="'+(x-L/2-3.2)+'" y="'+(y-11)+'" width="4.2" height="10" fill="#394047"/>';
+                          s += '<rect x="'+(x-2)+'" y="'+(y-3)+'" width="4" height="3" fill="#394047"/>'; }
+    else if(v==='thermal'){ s += '<rect x="'+(x-L/2)+'" y="'+(y-11)+'" width="'+L+'" height="9" rx="2" fill="#1b2622" stroke="#262c31" stroke-width=".8"/>';
+                            s += '<circle cx="'+(x+L/2-3.6)+'" cy="'+(y-6.5)+'" r="3.6" fill="#5fd6a8"/>'; }
+    else if(v==='laser'){ s += '<rect x="'+(x-L/2)+'" y="'+(y-8)+'" width="'+L+'" height="6.4" rx="1" fill="'+a+'" stroke="#262c31" stroke-width=".8"/>';
+                          s += '<path d="M'+(x+L/2)+' '+(y-4.8)+' L'+(x+L/2+10)+' '+(y-4.8)+'" stroke="#ff6b5e" stroke-width="1.3" stroke-dasharray="3 2"/>'; }
+  }
+
+  return '<svg viewBox="'+art.vb+'" width="'+(w||120)+'" height="'+Math.round((w||120)*0.34)+'" fill="none" '+
+         'style="max-width:100%;max-height:100%;overflow:visible">'+s+'</svg>';
+}
+
+/* ============================ 数值：改装生效 ============================ */
+
+const DEF_MODS = { recoilV:1, recoilH:1, spread:1, adsSpread:1, adsTime:1, adsFov:1,
+                   mag:1, magAdd:0, reload:1, damage:1, noise:1, moveSpread:1, draw:1,
+                   spreadRecover:1, falloff:1 };
+
+function gunModsOf(gunId){
+  const list = (INV.mods && INV.mods[gunId]) || {};
+  const m = Object.assign({}, DEF_MODS);
+  for(const slot in list){
+    const p = PARTS[list[slot]]; if(!p || !p.mods) continue;
+    for(const k in p.mods){
+      if(k==='magAdd') m.magAdd += p.mods[k];
+      else if(k in m) m[k] *= p.mods[k];
+    }
+  }
+  return m;
+}
+
+/** 把某把枪的有效数值重新算出来（改装只改有效值，基准留着做对比） */
+function applyMods(gunId){
+  const idx = WIDX[gunId]; if(idx===undefined) return;
+  const w = WEAPONS[idx], b = w.__base; if(!b) return;
+  const m = gunModsOf(gunId);
+  w.magSize       = Math.max(1, Math.round(b.magSize * m.mag) + m.magAdd);
+  w.damage        = b.damage * m.damage;
+  w.recoilKick    = b.recoilKick * m.recoilV;
+  w.recoilRot     = b.recoilRot * m.recoilH;
+  w.spreadBase    = b.spreadBase * m.spread;
+  w.spreadMax     = b.spreadMax * m.spread;
+  w.adsSpread     = b.adsSpread * m.adsSpread;
+  w.adsTime       = b.adsTime * m.adsTime;
+  w.adsFov        = clamp(b.adsFov * m.adsFov, 7, 80);
+  w.reloadTime    = b.reloadTime * m.reload;
+  w.drawTime      = b.drawTime * m.draw;
+  w.moveSpread    = b.moveSpread * m.moveSpread;
+  w.noise         = b.noise * m.noise;
+  w.spreadRecover = b.spreadRecover * m.spreadRecover;
+  w.falloffStart  = b.falloffStart * m.falloff;
+  w.falloffRange  = b.falloffRange * (m.falloff>1 ? 1.25 : 1);
+  if(w.mag > w.magSize) w.mag = w.magSize;
+}
+/** 枪械数值变化表（改装界面用） */
+function gunStatRows(gunId){
+  const idx=WIDX[gunId]; if(idx===undefined) return [];
+  const w=WEAPONS[idx], b=w.__base; if(!b) return [];
+  const defs=[
+    ['垂直后坐力', b.recoilKick, w.recoilKick, 3, -1],
+    ['水平后坐力', b.recoilRot,  w.recoilRot,  3, -1],
+    ['腰射散布',   b.spreadBase, w.spreadBase, 4, -1],
+    ['开镜耗时',   b.adsTime,    w.adsTime,    2, -1],
+    ['开镜视野',   b.adsFov,     w.adsFov,     1, -1],
+    ['弹容量',     b.magSize,    w.magSize,    0,  1],
+    ['换弹时间',   b.reloadTime, w.reloadTime, 2, -1],
+    ['单发伤害',   b.damage,     w.damage,     1,  1],
+    ['枪声距离',   b.noise,      w.noise,      0, -1],
+    ['举枪时间',   b.drawTime,   w.drawTime,   2, -1]
+  ];
+  return defs.map(d=>({ label:d[0], base:d[1], now:d[2], digits:d[3], dir:d[4] }));
+}
+
+/* ============================ 快捷栏 ============================ */
+
+const HB_SLOTS = ['med','gun0','gun1','nade'];
+
+function slotGunId(i){ return (player.slots||[])[i] || null; }
+function nadeId(){ return player.nadeKind; }
+function medId(){ return player.medKind; }
+function medCount(id){ return (INV.meds && INV.meds[id]) || 0; }
+function nadeCount(id){ return (INV.nades && INV.nades[id]) || 0; }
+function partCount(id){ return (INV.parts && INV.parts[id]) || 0; }
+
+function hbSlotInner(kind){
+  if(kind==='gun0' || kind==='gun1'){
+    const i = kind==='gun0'?0:1, id = slotGunId(i);
+    if(!id) return { empty:true, html:'<div class="hb-empty-t">空槽位</div>' };
+    const idx = WIDX[id], w = WEAPONS[idx];
+    return { empty:false,
+      html:'<div class="hb-nm">'+esc(WSHORT?WSHORT[id]:id)+'</div>'+
+           '<div class="hb-ico">'+gunSVG(id, 118)+'</div>'+
+           '<div class="hb-am">'+(pvpInfAmmo&&pvpInfAmmo()?'∞':w.mag)+' / '+
+             (pvpInfAmmo&&pvpInfAmmo()?'∞':w.res)+'</div>' };
+  }
+  if(kind==='nade'){
+    const id = nadeId();
+    const nd = NADES && NADES[id];
+    if(!id || !nd) return { empty:true, html:'<div class="hb-ico">'+((NADE_ICONS&&NADE_ICONS.frag)||'')+'</div>' };
+    const cnt = nadeCount(id);
+    return { empty:false,
+      html:'<div class="hb-ico">'+(NADE_ICONS&&NADE_ICONS[id]||'')+'</div>'+
+           '<div class="hb-badge">×'+cnt+'</div>' };
+  }
+  /* 药品 */
+  const id = medId();
+  if(!id || !MEDS[id]) return { empty:true, html:'<div class="hb-ico">'+medIcon('medkit',30)+'</div>' };
+  return { empty:false,
+    html:'<div class="hb-ico">'+medIcon(id, 30)+'</div>'+
+         '<div class="hb-badge">×'+medCount(id)+'</div>' };
+}
+
+/** 当前手持的是什么：换枪动画还没落地的那 0.x 秒也算「切到目标槽」，
+ *  否则玩家按 1/2 之后金光会在原槽位上赖着不动。 */
+function hbState(){
+  /* 手里正在往外掏的那把枪（switchTo 是 WEAPONS 下标，-1 表示没在切） */
+  const sway = (typeof player.switchTo === 'number') ? player.switchTo : -1;
+  if(player.nadeMode && nadeCount(nadeId()) > 0) return { kind:'nade' };
+  for(let i=0;i<2;i++){
+    const id = slotGunId(i);
+    if(id && WIDX[id] === (sway >= 0 ? sway : player.weapon))
+      return { kind: i===0 ? 'gun0' : 'gun1' };
+  }
+  return { kind:'' };
+}
+
+function renderHotbar(){
+  const bar = $('hotbar'); if(!bar) return;
+
+  /* 结构只建一次：槽位元素常驻，内容原地更新。
+     这样换弹进度条刷新时不会把 DOM 拆了重建（点了会「闪」）。 */
+  const kids = bar.children;
+  let needBuild = kids.length !== HB_SLOTS.length;
+  if(!needBuild){
+    for(let i=0;i<HB_SLOTS.length;i++){
+      if(kids[i].dataset.hb !== HB_SLOTS[i]){ needBuild = true; break; }
+    }
+  }
+  if(needBuild){
+    bar.innerHTML='';
+    for(const kind of HB_SLOTS){
+      const el = document.createElement('div');
+      el.className = 'hb-slot '+(kind.indexOf('gun')===0?'hb-gun':'hb-round');
+      el.dataset.hb = kind;
+      bar.appendChild(el);
+    }
+  }
+
+  const st = hbState();
+  HB_SLOTS.forEach((kind, i)=>{
+    const el = bar.children[i];
+    const inner = hbSlotInner(kind);
+    let cls = 'hb-slot '+(kind.indexOf('gun')===0?'hb-gun':'hb-round');
+    if(inner.empty) cls += ' empty';
+    if(st.kind === kind) cls += ' act';
+    else if(kind !== 'med') cls += ' dim';
+    if(cls !== el.className) el.className = cls;
+
+    let html = inner.html;
+    const KEYHINT = { gun0:'1', gun1:'2', nade:'3', med:'4' };
+    if(KEYHINT[kind]) html += '<span class="hb-key">'+KEYHINT[kind]+'</span>';
+
+    /* 换弹进度条 */
+    if(kind==='gun0'||kind==='gun1'){
+      const id = slotGunId(kind==='gun0'?0:1);
+      if(id){
+        const w = WEAPONS[WIDX[id]];
+        if(w && w.reloadT>0){
+          const pct = clamp(1-w.reloadT/w.reloadTime,0,1)*100;
+          html += '<div class="hb-bar" style="width:'+pct.toFixed(1)+'%"></div>';
+        }
+      }
+    }
+    /* 用药环形进度 */
+    if(kind==='med' && player.medUse){
+      const pct = clamp(player.medUse.t/player.medUse.dur,0,1);
+      html += '<svg class="hb-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" '+
+              'stroke-dasharray="113" stroke-dashoffset="'+(113*(1-pct)).toFixed(1)+'"/></svg>';
+    }
+    if(el.innerHTML !== html) el.innerHTML = html;
+  });
+}
+
+/* 快捷栏交互 */
+function bindHotbar(){
+  const bar = $('hotbar'); if(!bar) return;
+  bar.addEventListener('pointerdown', e=>{
+    const slot = e.target.closest('.hb-slot'); if(!slot) return;
+    e.preventDefault(); e.stopPropagation();
+    const kind = slot.dataset.hb;
+    if(kind==='gun0'||kind==='gun1'){
+      const i = kind==='gun0'?0:1;
+      if(!slotGunId(i)){ toast('背包中没有可用的枪'); return; }
+      switchWeaponSlot && switchWeaponSlot(i);
+      slot.classList.remove('hb-flash'); void slot.offsetWidth; slot.classList.add('hb-flash');
+    } else if(kind==='nade'){
+      if(nadeCount(nadeId())<=0){ toast('没有投掷物了'); return; }
+      switchWeaponSlot && switchWeaponSlot(2);
+      slot.classList.remove('hb-pop'); void slot.offsetWidth; slot.classList.add('hb-pop');
+    } else {
+      useMed();
+    }
+    updateAmmoUI();
+    renderHotbar();
+  });
+}
+
+/* ============================ 药品使用 ============================ */
+
+function useMed(){
+  const id = medId();
+  if(!id || !MEDS[id]){ toast('没有药品'); return; }
+  if(player.medUse){ player.medUse = null; renderHotbar(); return; }
+  if(medCount(id)<=0){ toast('没有药品'); return; }
+  const m = MEDS[id];
+  if(m.heal && player.hp >= (player.maxHp||100)){ toast('生命值已满'); return; }
+  if(m.armor && maxArmor && player.armor >= maxArmor()){ toast('护甲已满'); return; }
+  player.medUse = { id:id, t:0, dur:m.dur };
+  toast('正在使用 '+m.name);
+  renderHotbar();
+}
+
+function finishMed(id){
+  const m = MEDS[id]; if(!m) return;
+  if(medCount(id)<=0) return;
+  INV.meds[id] = Math.max(0, medCount(id)-1);
+  if(m.heal){
+    player.hp = Math.min(player.maxHp||100, player.hp + m.heal);
+    if(m.regen){ player.medRegen = { amt:m.regen.amt, t:m.regen.t }; }
+  }
+  if(m.armor){
+    const mx = maxArmor ? maxArmor() : 50;
+    player.armor = Math.min(mx, player.armor + m.armor);
+  }
+  if(m.buff){
+    player.buff = { speed:m.buff.speed||0, dr:m.buff.dr||0, t:m.buff.t||10 };
+  }
+  player.medUse = null;
+  if(updateVitalsUI) updateVitalsUI();
+  if(syncStats) { try{ syncStats(); }catch(e){} }
+  toast('已使用 '+m.name);
+}
+
+/* ============================ 商店 ============================ */
+
+const SHOP_TABS = [
+  { id:'all',   name:'全部', en:'ALL' },
+  { id:'prop',  name:'道具', en:'GEAR' },
+  { id:'gun',   name:'枪械', en:'WEAPON' },
+  { id:'armor', name:'防具', en:'ARMOR' },
+  { id:'ammo',  name:'子弹', en:'AMMO' },
+  { id:'part',  name:'配件', en:'PARTS' }
+];
+const PART_TABS = [
+  { id:'all',   name:'全部' },
+  { id:'muzzle',name:'枪口' },
+  { id:'optic', name:'瞄具' },
+  { id:'grip',  name:'握把' },
+  { id:'mag',   name:'弹匣' }
+];
+
+/* 分类图标：16×16，靠 currentColor 跟着选中态变色，不额外加载资源。
+   全部用实心块面 —— 17px 下细线会糊，块面轮廓反而更硬朗。 */
+const CAT_ICONS = {
+  all:'<svg viewBox="0 0 16 16"><rect x="1.6" y="1.6" width="5.3" height="5.3" rx=".7"/>'+
+      '<rect x="9.1" y="1.6" width="5.3" height="5.3" rx=".7"/>'+
+      '<rect x="1.6" y="9.1" width="5.3" height="5.3" rx=".7"/>'+
+      '<rect x="9.1" y="9.1" width="5.3" height="5.3" rx=".7"/></svg>',
+  prop:'<svg viewBox="0 0 16 16"><path d="M5.7 1.5h4.6c.5 0 .9.4.9.9v1.3h2c.9 0 1.6.7 1.6 1.6v7.1c0 .9-.7 1.6-1.6 1.6H2.8c-.9 0-1.6-.7-1.6-1.6V5.3c0-.9.7-1.6 1.6-1.6h2V2.4c0-.5.4-.9.9-.9zm.9 1.5v.7h2.8v-.7H6.6zM7 6.6v1.9H5.1v1.6H7v1.9h1.6v-1.9h1.9V8.5H8.6V6.6H7z"/></svg>',
+  gun:'<svg viewBox="0 0 16 16"><path d="M1.6 8.6h2.7l1.2-1.7h3.2v.8h4.6l1.9-1.2h1.1v2.1h-2.4l-1.2 1.7H9.9l-1.1 3.3H6.6l1.1-3.3H5.1l-.9 3.1H2.1l1-3.1H1.6z"/></svg>',
+  armor:'<svg viewBox="0 0 16 16"><path d="M8 1.1l5.7 2.1v4.4c0 3.3-2.4 6-5.7 7.3C4.7 13.6 2.3 10.9 2.3 7.6V3.2L8 1.1zm0 2.1L4.2 4.6v3c0 2.3 1.5 4.1 3.8 5.2 2.3-1.1 3.8-2.9 3.8-5.2v-3L8 3.2z"/></svg>',
+  ammo:'<svg viewBox="0 0 16 16"><path d="M8 1c2 1.7 3 3.7 3 6v6.3c0 .9-.7 1.7-1.7 1.7H6.7c-.9 0-1.7-.8-1.7-1.7V7c0-2.3 1-4.3 3-6z"/></svg>',
+  part:'<svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 1.2l5.9 3.4v6.8L8 14.8 2.1 11.4V4.6L8 1.2zm0 4.1a2.7 2.7 0 100 5.4 2.7 2.7 0 000-5.4z"/></svg>'
+};
+
+let shopTab = 'all', shopPartTab = 'all';
+
+function shopItems(){
+  const out = [];
+  /* 药品 */
+  for(const id in MEDS){
+    const m = MEDS[id];
+    out.push({ group:'prop', id:'med_'+id, name:m.name, desc:m.desc, price:m.price,
+      icon:medIcon(id, 30), cat:'med', item:id,
+      can(){ return !player.dead; },
+      why(){ return null; },
+      buy(){ INV.meds[id] = (INV.meds[id]||0)+1; autoEquip('med', id); } });
+  }
+  /* 投掷物 */
+  for(const id in NADES){
+    const nd = NADES[id];
+    out.push({ group:'prop', id:'nade_'+id, name:nd.name,
+      desc:'引信 '+nd.fuse.toFixed(1)+'s'+(nd.blind?(' · 致盲 '+nd.blind+'s'):(' · 范围 '+nd.radius+'m')),
+      price: nd.blind?230:150, icon:(NADE_ICONS&&NADE_ICONS[id])||'', cat:'nade', item:id,
+      can(){ return G.mode!=='pvp' && nadeCount(id)<4 && !player.dead; },
+      why(){ return nadeCount(id)>=4 ? '已达上限 4 个' : (G.mode==='pvp'?'死斗不可购买':null); },
+      buy(){ INV.nades[id]=(INV.nades[id]||0)+1; autoEquip('nade', id); } });
+  }
+  /* 枪械 */
+  const gunInfo = {
+    rifle  : { price:900, desc:'30 发全自动 · 中距离主力' },
+    shotgun: { price:650, desc:'泵动霰弹 · 近距离统治力' },
+    sniper : { price:1200, desc:'栓动一枪一个 · 开镜狙杀' },
+    pistol : { price:0,   desc:'基础手枪 · 各模式默认配发' }
+  };
+  for(const id in gunInfo){
+    const gi = gunInfo[id];
+    if(id==='pistol') continue;
+    out.push({ group:'gun', id:'gun_'+id, name:(WEAPONS[WIDX[id]]||{}).name||id, desc:gi.desc,
+      price:gi.price, icon:gunSVG(id, 96), cat:'gun', item:id,
+      can(){ return G.mode==='survival' && !INV.guns.includes(id) && !player.dead; },
+      why(){ return INV.guns.includes(id) ? '已拥有' : (G.mode!=='survival'?'本模式已配发':null); },
+      buy(){ if(!INV.guns.includes(id)) INV.guns.push(id); autoEquip('gun', id); } });
+  }
+  /* 防具 */
+  out.push({ group:'armor', id:'armorup', name:'护甲升级', price:ARMOR_ITEMS.armorup.price,
+    desc:ARMOR_ITEMS.armorup.desc, icon:armorIcon('armorup', 30), cat:'armor', item:'armorup',
+    can(){ return (player.armorLv|0)<3 && !player.dead; },
+    why(){ return (player.armorLv|0)>=3 ? '已满级' : null; },
+    priceFn(){ return [ARMOR_ITEMS.armorup.price, ARMOR_ITEMS.armorup.price2, ARMOR_ITEMS.armorup.price3][player.armorLv|0]; },
+    buy(){
+      player.armorLv = Math.min(3,(player.armorLv|0)+1);
+      player.armor = maxArmor ? maxArmor() : player.armor;
+      if(updateVitalsUI) updateVitalsUI();
+      toast('护甲升级到 Lv.'+player.armorLv);
+    } });
+  out.push({ group:'armor', id:'helmet', name:'战术头盔', price:ARMOR_ITEMS.helmet.price,
+    desc:ARMOR_ITEMS.helmet.desc, icon:armorIcon('helmet', 30), cat:'armor', item:'helmet',
+    can(){ return !INV.seen.helmet && !player.dead; },
+    why(){ return INV.seen.helmet ? '已拥有' : null; },
+    buy(){ INV.seen.helmet = true; player.gearDmgRed = 0.08; player.armor = Math.min(
+              (maxArmor?maxArmor():50)+25, player.armor+25);
+             if(updateVitalsUI) updateVitalsUI(); toast('已装备战术头盔'); } });
+  out.push({ group:'armor', id:'plate', name:'防弹插板', price:ARMOR_ITEMS.plate.price,
+    desc:ARMOR_ITEMS.plate.desc, icon:armorIcon('plate', 30), cat:'armor', item:'plate',
+    can(){ return !player.dead; },
+    why(){ return null; },
+    buy(){ player.armor = Math.min((maxArmor?maxArmor():50)+50, player.armor+50);
+             if(updateVitalsUI) updateVitalsUI(); toast('插板已插入，护甲 +50'); } });
+  /* 子弹 */
+  for(const cal in AMMO){
+    const a = AMMO[cal];
+    out.push({ group:'ammo', id:'ammo_'+cal, name:a.name, desc:a.desc, price:a.price,
+      icon:ammoIcon(cal, 30), cat:'ammo', item:cal,
+      can(){ return a.guns.some(g=>INV.guns.includes(g)) && !player.dead; },
+      why(){ return a.guns.some(g=>INV.guns.includes(g)) ? null : '没有对应口径的枪'; },
+      buy(){
+        let got=0;
+        a.guns.forEach(g=>{
+          if(!INV.guns.includes(g)) return;
+          const w = WEAPONS[WIDX[g]];
+          const baseRes = (w.__base && w.__base.reserve) || w.reserve || 0;
+          const cap = Math.max(Math.round(baseRes*3), w.res + a.add);
+          w.maxReserve = cap;
+          const before = w.res;
+          w.res = Math.min(cap, w.res + a.add);
+          got += w.res-before;
+        });
+        toast(got>0 ? ('补充备弹 +'+got) : '备弹已满');
+      } });
+  }
+  /* 配件 */
+  for(const id in PARTS){
+    const p = PARTS[id];
+    out.push({ group:'part', id:'part_'+id, name:p.name, desc:p.desc, price:p.price,
+      icon:partIcon(id, 28), cat:'part', item:id, slot:p.slot,
+      can(){ return partCount(id)<2 && !player.dead; },
+      why(){ return partCount(id)>=2 ? '最多持有 2 件' : null; },
+      buy(){ INV.parts[id]=(INV.parts[id]||0)+1; toast('配件已存入背包，请在改装界面安装'); } });
+  }
+  return out;
+}
+
+/** 商店渲染：分区标签 + 条目 */
+function renderShop(){
+  const tabsEl = $('shopTabs'), subEl = $('shopSubTabs'), list = $('shopList');
+  if(!list) return;
+  if(tabsEl){
+    tabsEl.innerHTML='';
+    SHOP_TABS.forEach(t=>{
+      const b=document.createElement('button');
+      b.type='button';
+      b.className='cat-tab'+(shopTab===t.id?' on':'');
+      b.setAttribute('aria-pressed', shopTab===t.id ? 'true':'false');
+      b.innerHTML='<span class="ct-ic">'+(CAT_ICONS[t.id]||'')+'</span>'+
+                  '<span class="ct-lb">'+t.name+'</span>'+
+                  '<span class="ct-en">'+(t.en||'')+'</span>';
+      b.addEventListener('click', ()=>{ shopTab=t.id; renderShop(); });
+      tabsEl.appendChild(b);
+    });
+  }
+  if(subEl){
+    subEl.style.display = (shopTab==='part') ? 'flex':'none';
+    subEl.innerHTML='';
+    if(shopTab==='part') PART_TABS.forEach(t=>{
+      const b=document.createElement('button');
+      b.type='button';
+      b.className='cat-sub'+(shopPartTab===t.id?' on':'');
+      b.textContent=t.name;
+      b.addEventListener('click', ()=>{ shopPartTab=t.id; renderShop(); });
+      subEl.appendChild(b);
+    });
+  }
+  list.innerHTML='';
+  const items = shopItems().filter(it=>{
+    if(shopTab==='all') return true;
+    if(shopTab==='part'){
+      if(it.cat!=='part') return false;
+      return shopPartTab==='all' || it.slot===shopPartTab;
+    }
+    return it.group===shopTab;
+  });
+  /* 当前分类标题 + 条目数（列表外的常驻一行） */
+  const nameEl = $('shopCatName'), cntEl = $('shopCatCount');
+  if(nameEl){
+    const t = SHOP_TABS.find(x=>x.id===shopTab);
+    let nm = t ? t.name : '全部';
+    if(shopTab==='part' && shopPartTab!=='all'){
+      const st = PART_TABS.find(x=>x.id===shopPartTab);
+      if(st) nm = '配件 · ' + st.name;
+    }
+    nameEl.textContent = nm + ' / ' + ((t&&t.en)||'ALL');
+  }
+  if(cntEl) cntEl.textContent = items.length + ' 项';
+  const SEC_CN = { prop:'道具', gun:'枪械', armor:'防具', ammo:'子弹', part:'配件' };
+  let lastSec = null, secIdx = 0;
+  items.forEach(it=>{
+    if(shopTab==='all' && it.group!==lastSec){
+      lastSec = it.group; secIdx++;
+      const h=document.createElement('div');
+      h.className='shop-sec';
+      h.textContent = (secIdx<10?'0':'')+secIdx+'  '+(SEC_CN[it.group]||'');
+      list.appendChild(h);
+    }
+    const price = it.priceFn ? it.priceFn() : it.price;
+    const usable = it.can();
+    const afford = (player.money|0) >= price;
+    const row=document.createElement('div');
+    row.className='shop-row'+(usable?'':' own');
+    row.innerHTML='<div class="sr-i">'+it.icon+'</div>'+
+                  '<div class="sr-t"><div class="sr-n"></div><div class="sr-d"></div></div>'+
+                  '<div class="sr-p">¥'+price+'</div><button></button>';
+    row.querySelector('.sr-n').textContent=it.name;
+    row.querySelector('.sr-d').textContent=it.desc;
+    const btn=row.querySelector('button');
+    const why = it.why ? it.why() : null;
+    btn.textContent = why ? (why==='已拥有'?'已拥有':'不可用') : (afford?'购买':'资金不足');
+    btn.disabled = !usable || !afford;
+    btn.title = why || '';
+    btn.addEventListener('click', ()=>{
+      const p2 = it.priceFn ? it.priceFn() : it.price;
+      if(!it.can() || !spendMoney(p2)) return;
+      it.buy();
+      SFX && SFX.boltClick && SFX.boltClick();
+      if(updateMoneyUI) updateMoneyUI();
+      renderShop(); renderHotbar(); renderBag();
+    });
+    list.appendChild(row);
+  });
+  if(updateMoneyUI) updateMoneyUI();
+}
+
+/** 买入后自动放入快捷栏空位（不覆盖已有） */
+function autoEquip(cat, id){
+  if(cat==='gun'){
+    const free = (player.slots||[]).findIndex(s=>!s);
+    if(free<0){ toast('快捷栏已满，请手动调整'); return; }
+    player.slots[free]=id;
+    toast('已自动装备到快捷栏');
+  } else if(cat==='nade'){
+    if(!player.nadeKind || nadeCount(player.nadeKind)<=0){ player.nadeKind=id; toast('已自动装备到快捷栏'); }
+    else toast('已存入背包，可在背包里切换');
+  } else if(cat==='med'){
+    if(!player.medKind || medCount(player.medKind)<=0){ player.medKind=id; toast('已自动装备到快捷栏'); }
+    else toast('已存入背包，可在背包里切换');
+  }
+}
+
+/* ============================ 背包 ============================ */
+
+const BAG_TABS = [
+  { id:'all', name:'全部' }, { id:'gun', name:'枪械' }, { id:'nade', name:'投掷物' },
+  { id:'med', name:'药品' }, { id:'armor', name:'防具' }, { id:'ammo', name:'子弹' },
+  { id:'part', name:'配件' }
+];
+let bagTab='all';
+
+function bagEntries(){
+  const out=[];
+  /* 枪械 */
+  INV.guns.forEach(id=>{
+    const w = WEAPONS[WIDX[id]]; if(!w) return;
+    const inSlot = (player.slots||[]).indexOf(id);
+    const installed = (INV.mods && INV.mods[id]) || {};
+    const mods = Object.keys(installed).map(s=>PARTS[installed[s]]).filter(Boolean);
+    out.push({ cat:'gun', key:id, id:id, name:w.name, qty:null, icon:gunSVG(id, 84),
+      desc:w.name+' · '+(WSHORT?WSHORT[id]:id)+' · 弹药 '+w.magSize+' 发',
+      tag: inSlot>=0 ? ('槽 '+(inSlot+1)) : null,
+      ok: mods.length? ('已改装：'+mods.map(m=>m.name).join('、')) : null });
+  });
+  /* 投掷物 */
+  for(const id in NADES){
+    const c = nadeCount(id); if(c<=0) continue;
+    out.push({ cat:'nade', key:'nade_'+id, id:id, name:NADES[id].name, qty:c,
+      icon:(NADE_ICONS&&NADE_ICONS[id])||'',
+      desc:'引信 '+NADES[id].fuse.toFixed(1)+'s · '+(NADES[id].blind?('致盲 '+NADES[id].blind+'s'):('伤害 '+NADES[id].dmg+' / 范围 '+NADES[id].radius+'m')),
+      tag: player.nadeKind===id?'当前':null });
+  }
+  /* 药品 */
+  for(const id in MEDS){
+    const c = medCount(id); if(c<=0) continue;
+    out.push({ cat:'med', key:'med_'+id, id:id, name:MEDS[id].name, qty:c, icon:medIcon(id,28),
+      desc:MEDS[id].desc, tag: player.medKind===id?'当前':null });
+  }
+  /* 配件（未安装的持有量） */
+  for(const id in PARTS){
+    const c = partCount(id); if(c<=0) continue;
+    const p = PARTS[id];
+    out.push({ cat:'part', key:'part_'+id, id:id, name:p.name, qty:c, icon:partIcon(id,28),
+      desc:p.desc+' · 槽位：'+SLOT_CN[p.slot]+(p.caliber?(' · '+p.caliber+' 口径'):''),
+      tag:null });
+  }
+  /* 已装在枪上的配件：单独成行 + 「已装备」角标 */
+  for(const gid in (INV.mods||{})){
+    const w = WEAPONS[WIDX[gid]]; if(!w) continue;
+    for(const slot in INV.mods[gid]){
+      const p = PARTS[INV.mods[gid][slot]]; if(!p) continue;
+      const pid = INV.mods[gid][slot];
+      out.push({ cat:'part', key:'eq_'+gid+'_'+slot, id:pid, name:p.name, qty:null,
+        icon:partIcon(pid,28), desc:'已装在 '+w.name+' 的'+SLOT_CN[slot]+'槽 · 卸下后回到背包',
+        tag:'已装备', eqGun:gid, eqSlot:slot });
+    }
+  }
+  /* 防具（不进背包，做成只读条目） */
+  out.push({ cat:'armor', key:'armor_lv', id:'armor_lv', name:'护甲等级', qty:null,
+    icon:armorIcon('armorup',28), desc:'当前 Lv.'+(player.armorLv|0)+' · 护甲上限 '+
+      (maxArmor?maxArmor():50)+(INV.seen.helmet?' · 已装备头盔':''), tag:null, readonly:true });
+  /* 子弹（只读，显示备弹池） */
+  for(const cal in AMMO){
+    const a = AMMO[cal];
+    const guns = a.guns.filter(g=>INV.guns.includes(g));
+    if(!guns.length) continue;
+    const tot = guns.reduce((s,g)=>s+WEAPONS[WIDX[g]].res,0);
+    out.push({ cat:'ammo', key:'ammo_'+cal, id:'ammo_'+cal, name:a.name, qty:null,
+      icon:ammoIcon(cal,28), desc:'备弹池 '+tot+' 发 · '+guns.map(g=>(WEAPONS[WIDX[g]].name)).join('、'),
+      tag:null, readonly:true });
+  }
+  return out;
+}
+
+function bagCountOf(cat){
+  return bagEntries().filter(e=>cat==='all' || e.cat===cat).length;
+}
+
+function renderBag(){
+  const tabsEl=$('bagTabs'), grid=$('bagGrid'); if(!grid) return;
+  const moneyEl=$('bagMoney'); if(moneyEl) moneyEl.textContent = (player.money|0);
+  if(tabsEl){
+    tabsEl.innerHTML='';
+    BAG_TABS.forEach(t=>{
+      const b=document.createElement('button');
+      const n = bagCountOf(t.id);
+      b.className='gt'+(bagTab===t.id?' on':'');
+      b.textContent = t.name + (n?(' '+n):'');
+      b.addEventListener('click', ()=>{ bagTab=t.id; renderBag(); });
+      tabsEl.appendChild(b);
+    });
+  }
+  grid.innerHTML='';
+  const entries = bagEntries().filter(e=>bagTab==='all' || e.cat===bagTab);
+  if(!entries.length){
+    grid.innerHTML='<div style="grid-column:1/-1;padding:26px 10px;text-align:center;'+
+      'font-size:10px;color:rgba(223,230,236,.3);letter-spacing:.1em">这个分类是空的</div>';
+  }
+  entries.forEach(e=>{
+    const c=document.createElement('div');
+    c.className='bag-cell'+(e.readonly?' readonly':'');
+    c.dataset.cat=e.cat; c.dataset.id=e.id; c.dataset.key=e.key;
+    if(e.readonly) c.dataset.ro='1';
+    if(e.eqGun){ c.dataset.eqGun=e.eqGun; c.dataset.eqSlot=e.eqSlot; }
+    c.innerHTML='<div class="bc-ico">'+e.icon+'</div><div class="bc-nm">'+esc(e.name)+'</div>'+
+      (e.tag?('<div class="bc-tag">'+esc(e.tag)+'</div>'):'')+
+      (e.qty?('<div class="bc-qt">×'+e.qty+'</div>'):'');
+    if(e.eqGun) c.style.opacity='.55';
+    grid.appendChild(c);
+  });
+  renderBagHotbar();
+}
+
+/* 背包底部的快捷栏（拖拽落点） */
+function renderBagHotbar(){
+  const box=$('bagHotbar'); if(!box) return;
+  box.innerHTML='<span class="hb-lb">快捷栏</span>';
+  for(const kind of HB_SLOTS){
+    const el=document.createElement('div');
+    el.className='hb-slot '+(kind.indexOf('gun')===0?'hb-gun':'hb-round');
+    el.dataset.drop = kind;
+    const inner=hbSlotInner(kind);
+    if(inner.empty) el.classList.add('empty');
+    el.innerHTML=inner.html;
+    box.appendChild(el);
+  }
+}
+
+/* ============================ 拖拽 ============================ */
+
+let drag=null;   /* {cat,id,eqGun,eqSlot, ghost, src} */
+let suppressClick = false;   /* 拖完松手弹出的合成 click 要吞掉 */
+
+function dragValid(cat, dropKind){
+  if(dropKind==='gun0'||dropKind==='gun1') return cat==='gun';
+  if(dropKind==='nade') return cat==='nade';
+  if(dropKind==='med')  return cat==='med';
+  return false;
+}
+
+function dropPayload(cat, id){
+  if(cat==='gun')  return { icon:gunSVG(id, 84) };
+  if(cat==='nade') return { icon:(NADE_ICONS&&NADE_ICONS[id])||'' };
+  if(cat==='med')  return { icon:medIcon(id, 28) };
+  return { icon:'' };
+}
+
+function startDrag(ev, cell, isTouch){
+  const cat=cell.dataset.cat, id=cell.dataset.id;
+  const eqGun=cell.dataset.eqGun, eqSlot=cell.dataset.eqSlot;
+  if(cat==='armor'||cat==='ammo') { toast('这类物品不能拖到快捷栏'); return; }
+  /* 幽灵跟手分成两条独立的路径，这样游戏帧率再低也不会「拖不动」：
+     ① 位置：pointermove 里直接写 transform —— transform 走合成层，
+        不触发重排、不需要等 rAF，浏览器自己就能按显示刷新率平滑提交；
+     ② 落点判定：elementFromPoint 会强制同步布局，必须节流（30ms 一次），
+        它只在真的换了目标时才改 class。 */
+  document.body.classList.add('gear-dragging');
+  suppressClick = false;
+  drag = { cat:cat, id:id, eqGun:eqGun, eqSlot:eqSlot, cell:cell, moved:false, touch:!!isTouch,
+           okEl:null, badEl:null, px:ev.clientX, py:ev.clientY, hitAt:0, hitTimer:0 };
+  const p = dropPayload(cat,id);
+  const g=document.createElement('div');
+  g.className='gear-ghost';
+  const nm=(cell.querySelector('.bc-nm')||{}).textContent||'';
+  g.innerHTML = p.icon + (nm?('<span class="gh-nm">'+esc(nm)+'</span>'):'');
+  document.body.appendChild(g);
+  drag.ghost=g;
+  g.style.transform=ghostTf(ev.clientX, ev.clientY);
+  cell.classList.add('dragging');
+  if(bagTipEl) bagTipEl.style.display='none';
+  dragHit(true);
+  if(SFX && SFX.equipClick) SFX.equipClick();
+}
+/** 幽灵贴在指针上方：落在底部快捷栏上时，绿色高亮才不会被浮层自己挡住 */
+function ghostTf(x,y){
+  return 'translate3d('+x+'px,'+y+'px,0) translate(-50%,-100%) translateY(-10px) scale(1.02)';
+}
+/** 跟手：只改 transform，不做任何布局读取 */
+function moveGhost(x,y){
+  if(!drag) return;
+  drag.px=x; drag.py=y;
+  if(drag.ghost) drag.ghost.style.transform=ghostTf(x,y);
+  dragHit(false);
+}
+/** 落点命中：默认 30ms 节流；force 时立刻算（起手 / 松手前）。
+ *  节流窗口内还会补一次延迟判定 —— 否则「拖到槽上停住不动」时高亮不会亮，
+ *  玩家会以为没接住，只好一点一点挪。 */
+function dragHit(force){
+  if(!drag) return;
+  const now=performance.now();
+  if(!force && now - drag.hitAt < 30){
+    if(!drag.hitTimer){
+      const me = drag;
+      drag.hitTimer = setTimeout(()=>{ if(drag===me){ me.hitTimer = 0; dragHit(true); } }, 32);
+    }
+    return;
+  }
+  drag.hitAt = now;
+  const tgt=snapDrop(drag.px, drag.py);
+  if(tgt===drag.okEl || tgt===drag.badEl) return;
+  if(drag.okEl) drag.okEl.classList.remove('gear-drop-ok');
+  if(drag.badEl) drag.badEl.classList.remove('gear-drop-bad');
+  drag.okEl=null; drag.badEl=null;
+  if(tgt){
+    if(dragValid(drag.cat, tgt.dataset.drop)){ tgt.classList.add('gear-drop-ok'); drag.okEl=tgt; }
+    else { tgt.classList.add('gear-drop-bad'); drag.badEl=tgt; }
+  }
+}
+/** 命中离指针最近的落点：直接压在槽上就取它，否则 40px 内最近的也算 */
+function snapDrop(x,y){
+  const el=document.elementFromPoint(x,y);
+  const direct=el && el.closest ? el.closest('[data-drop]') : null;
+  if(direct) return direct;
+  let best=null, bd=40;
+  document.querySelectorAll('[data-drop]').forEach(d=>{
+    const r=d.getBoundingClientRect();
+    const dx=Math.max(r.left-x, 0, x-r.right);
+    const dy=Math.max(r.top-y, 0, y-r.bottom);
+    const dist=Math.hypot(dx,dy);
+    if(dist<bd){ bd=dist; best=d; }
+  });
+  return best;
+}
+function highlightDrop(x,y){ moveGhost(x,y); }
+function endDrag(x,y){
+  if(!drag) return;
+  const d=drag;
+  drag=null;
+  if(d.hitTimer) clearTimeout(d.hitTimer);
+  /* 真的拖过了，就吞掉随后浏览器补发的那一下 click（否则拖完枪会顺手打开改装） */
+  suppressClick = !!d.moved;
+  document.body.classList.remove('gear-dragging');
+  if(d.ghost) d.ghost.remove();
+  if(d.cell) d.cell.classList.remove('dragging');
+  document.querySelectorAll('.gear-drop-ok,.gear-drop-bad').forEach(e=>e.classList.remove('gear-drop-ok','gear-drop-bad'));
+  /* 触屏原地长按后松手：当作「查看详情」，不执行放置 */
+  if(d.touch && !d.moved){
+    const cell=d.cell;
+    renderBag(); renderHotbar();
+    setTimeout(()=>{ const c=document.querySelector('.bag-cell[data-key="'+(cell.dataset.key||'')+'"]'); if(c) bagTipFor(c,x,y); },0);
+    return;
+  }
+  const tgt=snapDrop(x,y);
+  if(!tgt){ renderBag(); renderHotbar(); return; }
+  const kind=tgt.dataset.drop;
+  if(!dragValid(d.cat, kind)){
+    toast('这个物品不能放在这里');
+    if(SFX && SFX.dryFire) SFX.dryFire();
+    renderBag(); renderHotbar();
+    return;
+  }
+  /* 卸下已装备配件 */
+  if(d.eqGun){
+    if(d.cat==='part' && d.eqSlot){
+      uninstallPart(d.eqGun, d.eqSlot);
+      renderBag(); renderHotbar();
+      return;
+    }
+  }
+  if(kind==='gun0'||kind==='gun1'){
+    const i = kind==='gun0'?0:1;
+    player.slots[i]=d.id;
+    toast('已装备到快捷槽 '+(i+1));
+  } else if(kind==='nade'){
+    player.nadeKind=d.id;
+    toast('已切换投掷物');
+  } else if(kind==='med'){
+    player.medKind=d.id;
+    toast('已切换药品');
+  }
+  SFX && SFX.equipClick && SFX.equipClick();
+  if(updateAmmoUI) updateAmmoUI();
+  renderBag(); renderHotbar();
+}
+
+/** 物品详情浮层（桌面悬停 / 触屏长按松手） */
+let bagTipEl = null, bagTipTimer = 0;
+function bagTipFor(cell, x, y){
+  if(!cell) return;
+  const cat=cell.dataset.cat, id=cell.dataset.id;
+  let e=bagEntries().find(v=>v.cat===cat && v.id===id && v.key===cell.dataset.key);
+  if(!e) e=bagEntries().find(v=>v.cat===cat && v.id===id);
+  if(!e) return;
+  if(!bagTipEl){ bagTipEl=document.createElement('div'); bagTipEl.className='gear-tip'; document.body.appendChild(bagTipEl); }
+  bagTipEl.innerHTML='<b>'+esc(e.name)+'</b>'+esc(e.desc||'')+(e.tag?(' <span class="gt-c">'+esc(e.tag)+'</span>'):'');
+  bagTipEl.style.display='block';
+  bagTipEl.style.left=Math.min(window.innerWidth-240, Math.max(8,x+14))+'px';
+  bagTipEl.style.top=Math.min(window.innerHeight-110, Math.max(8,y-10))+'px';
+  clearTimeout(bagTipTimer);
+  bagTipTimer=setTimeout(()=>{ if(bagTipEl) bagTipEl.style.display='none'; }, 2600);
+}
+
+function bindBagDrag(){
+  const grid=$('bagGrid'); if(!grid) return;
+  let start=null, holdTimer=0, touchHold=false;
+
+  /* ---------------- 触屏滚动（自己驱动，带惯性） ----------------
+     .bag-cell 的 touch-action 改成 none 之后，浏览器不再接管纵向手势，
+     列表滚动就得由这里实现，否则移动端根本翻不动背包。 */
+  let scrollRaf=0, scrollV=0, scrollLastT=0;
+  const stopInertia=()=>{ if(scrollRaf){ cancelAnimationFrame(scrollRaf); scrollRaf=0; } scrollV=0; };
+  const runInertia=()=>{
+    if(scrollRaf){ cancelAnimationFrame(scrollRaf); scrollRaf=0; }
+    if(Math.abs(scrollV) < 0.02){ scrollV=0; return; }
+    scrollLastT=performance.now();
+    const step=t=>{
+      const dt=Math.min(48, t-scrollLastT); scrollLastT=t;
+      if(!grid.offsetParent){ scrollRaf=0; scrollV=0; return; }   /* 面板被关掉就停 */
+      grid.scrollTop -= scrollV*dt;
+      scrollV *= Math.pow(0.93, dt/16);
+      if(Math.abs(scrollV) < 0.02){ scrollRaf=0; scrollV=0; return; }
+      scrollRaf=requestAnimationFrame(step);
+    };
+    scrollRaf=requestAnimationFrame(step);
+  };
+
+  grid.addEventListener('pointerdown', e=>{
+    /* 新的一次按下 = 新的一次手势，之前那次拖拽留下的「吞 click」标记作废 */
+    suppressClick = false;
+    stopInertia();                    /* 手指落下就刹住惯性，不然列表会自己跑 */
+    const cell=e.target.closest('.bag-cell'); if(!cell) return;
+    const ro = !!cell.dataset.ro;     /* 只读条目：不能拖，但可以在它上面滑动滚列表 */
+    /* 触屏：长按到起点火之后再夺指针。
+       桌面：按下就捕获，鼠标甩出网格也不会丢帧。 */
+    if(e.pointerType==='mouse'){
+      if(ro) return;
+      start={x:e.clientX,y:e.clientY,cell:cell,pid:e.pointerId,scrolling:false};
+      try{ grid.setPointerCapture(e.pointerId); }catch(_pc){}
+    } else {
+      start={x:e.clientX,y:e.clientY,cell:ro?null:cell,pid:e.pointerId,
+             scrollTop:grid.scrollTop,scrolling:false,travel:0,
+             lastY:e.clientY,lastT:performance.now()};
+      if(ro) return;
+      touchHold=true;
+      holdTimer=setTimeout(()=>{
+        if(start && start.cell && !start.scrolling){
+          /* 等待期间手指已经挪动过 = 这手势是在滑列表，不是长按（慢慢移动时
+             每一帧位移都不到 10px，光靠 pointermove 判断会漏，这里补一道） */
+          if(start.travel > 6){ touchHold=false; return; }
+          startDrag({clientX:start.x,clientY:start.y}, start.cell, true);
+          /* 触发后把指针捕获绑到网格上（绑定在格子上的话，拖到别处就收不到事件） */
+          if(start.pid!=null){ try{ grid.setPointerCapture(start.pid); }catch(err){} }
+        }
+      }, 300);
+    }
+  });
+  grid.addEventListener('pointermove', e=>{
+    if(!start) return;
+    if(drag){
+      e.preventDefault();
+      /* 触屏手指静止时会抖 2~4px，阈值给到 12，免得长按看详情被抖动判成拖动 */
+      const need = drag.touch ? 12 : 6;
+      if(Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y) > need) drag.moved = true;
+      moveGhost(e.clientX,e.clientY);
+      return;
+    }
+    const dx=e.clientX-start.x, dy=e.clientY-start.y;
+    start.travel = Math.abs(dx)+Math.abs(dy);
+
+    if(e.pointerType!=='mouse'){
+      if(start.scrolling){
+        grid.scrollTop = start.scrollTop - dy;
+        const now=performance.now(), dt=Math.max(1, now-start.lastT);
+        scrollV = (e.clientY - start.lastY) / dt;   /* px/ms */
+        start.lastY=e.clientY; start.lastT=now;
+        return;
+      }
+      if(Math.abs(dx)+Math.abs(dy) > 8){
+        /* 手指动了 → 这一下手势不是长按，转成滚动 */
+        clearTimeout(holdTimer); touchHold=false;
+        start.scrolling=true; start.scrollTop=grid.scrollTop;
+        start.lastY=e.clientY; start.lastT=performance.now();
+        scrollV=0;
+        grid.scrollTop = start.scrollTop - dy;
+      }
+      return;
+    }
+
+    if(Math.abs(dx)+Math.abs(dy) > 5){
+      startDrag(e, start.cell, false);
+      try{ grid.setPointerCapture(e.pointerId); }catch(_pc){}
+    }
+  });
+  const finish=e=>{
+    const had=!!drag;
+    clearTimeout(holdTimer); touchHold=false;
+    if(drag) endDrag(e.clientX,e.clientY);
+    if(start && start.scrolling){
+      /* 滚动过就别再让浏览器补一个 click（否则松手会顺手选中/开改装） */
+      suppressClick = true;
+      if(performance.now() - start.lastT > 120) scrollV = 0;   /* 停住很久再松手，不该继续滑 */
+      runInertia();
+    } else stopInertia();
+    start=null;
+    if(had){ try{ grid.releasePointerCapture(e.pointerId); }catch(_pc){} }
+  };
+  grid.addEventListener('pointerup', finish);
+  grid.addEventListener('pointercancel', ()=>{ clearTimeout(holdTimer); touchHold=false; start=null; stopInertia();
+    if(drag){ document.body.classList.remove('gear-dragging');
+      if(drag.ghost) drag.ghost.remove(); if(drag.cell) drag.cell.classList.remove('dragging'); drag=null; } });
+  grid.addEventListener('click', e=>{
+    /* 刚拖完那一下 click 要吞掉；但真实点击不能被时间窗误杀
+       （低帧率下 pointerup → click 可能隔几百毫秒），所以按「有没有位移」判断。 */
+    if(drag) return;
+    if(suppressClick){ suppressClick=false; return; }
+    const cell=e.target.closest('.bag-cell'); if(!cell) return;
+    if(cell.dataset.ro){ toast('这条只是状态信息，不能移动'); return; }
+    const cat=cell.dataset.cat, id=cell.dataset.id;
+    if(cat==='gun'){ openSmith(id); return; }
+    if(cat==='part' && cell.dataset.eqGun){
+      toast('点击「改装」界面里的卸下按钮可取回');
+      return;
+    }
+    /* 直接点击也能切换当前（触屏最顺手的路径） */
+    if(cat==='nade'){ player.nadeKind=id; toast('已切换投掷物'); }
+    else if(cat==='med'){ player.medKind=id; toast('已切换药品'); }
+    else if(cat==='part'){ toast('在改装界面里安装这个配件'); return; }
+    if(updateAmmoUI) updateAmmoUI();
+    renderBag(); renderHotbar();
+  });
+  const showTip=(cell,x,y)=>bagTipFor(cell,x,y);
+  grid.addEventListener('pointerover', e=>{
+    if(e.pointerType!=='mouse' || drag) return;
+    const cell=e.target.closest('.bag-cell'); if(cell) showTip(cell,e.clientX,e.clientY);
+  });
+  grid.addEventListener('pointerout', e=>{
+    if(e.pointerType!=='mouse') return;
+    if(!e.relatedTarget || !e.relatedTarget.closest || !e.relatedTarget.closest('.bag-cell')){
+      if(bagTipEl) bagTipEl.style.display='none';
+    }
+  });
+  /* 长按（触屏）显示详情 */
+  grid.addEventListener('contextmenu', e=>e.preventDefault());
+}
+
+/* ============================ 枪械改装 ============================ */
+
+let smith = { gunId:null, slot:null };
+
+function partFits(partId, gunId){
+  const p=PARTS[partId]; if(!p) return false;
+  const slots=GUN_SLOTS[gunId]||[];
+  if(slots.indexOf(p.slot)<0) return false;
+  if(p.guns && p.guns.indexOf(gunId)<0) return false;
+  if(p.caliber && GUN_CAL[gunId]!==p.caliber) return false;
+  return true;
+}
+
+function installPart(gunId, partId){
+  if(!partFits(partId,gunId)){ toast('这个配件不适用这把枪'); return; }
+  if(partCount(partId)<=0){ toast('背包里没有这个配件'); return; }
+  const p=PARTS[partId];
+  if(!INV.mods[gunId]) INV.mods[gunId]={};
+  const old = INV.mods[gunId][p.slot];
+  if(old){ INV.parts[old]=(INV.parts[old]||0)+1; }   /* 旧配件退回背包 */
+  INV.parts[partId] = partCount(partId)-1;
+  INV.mods[gunId][p.slot]=partId;
+  applyMods(gunId);
+  if(SFX && SFX.equipClick) SFX.equipClick();
+  toast('已装上 '+p.name);
+}
+function uninstallPart(gunId, slot){
+  const m=INV.mods[gunId]; if(!m||!m[slot]) return;
+  if(SFX && SFX.magOut) SFX.magOut();
+  const id=m[slot]; delete m[slot];
+  INV.parts[id]=(INV.parts[id]||0)+1;
+  applyMods(gunId);
+  if(SFX && SFX.boltClick) SFX.boltClick();
+  toast('已卸下 '+PARTS[id].name);
+}
+
+function openSmith(gunId){
+  if(!INV.guns.includes(gunId)){ toast('背包里没有这把枪'); return; }
+  smith.gunId=gunId;
+  const slots=GUN_SLOTS[gunId]||[];
+  smith.slot = slots.indexOf(smith.slot)>=0 ? smith.slot : slots[0];
+  renderSmith();
+  const p=$('smithPanel'); if(p) p.classList.remove('hide');
+  if(releaseTouchHolds) { try{ releaseTouchHolds(); }catch(e){} }
+}
+function closeSmith(){
+  const p=$('smithPanel'); if(p) p.classList.add('hide');
+  smith.gunId=null;
+}
+
+function renderSmith(){
+  const panel=$('smithPanel'); if(!panel) return;
+  const gunId=smith.gunId; if(!gunId) return;
+  const w=WEAPONS[WIDX[gunId]], b=w.__base;
+  $('smithTitle').textContent=w.name;
+  $('smithMoney').textContent=player.money|0;
+
+  /* 大图 + 槽位 */
+  const view=$('smithView');
+  view.innerHTML=gunSVG(gunId, 380)+'<span class="srot">拖动可旋转</span>';
+  view.dataset.rot='0';
+  view.style.transform='';
+
+  const slotsEl=$('smithSlots'); slotsEl.innerHTML='';
+  const slots=GUN_SLOTS[gunId]||[];
+  ['muzzle','optic','grip','mag','feed'].forEach(sl=>{
+    if(slots.indexOf(sl)<0) return;   /* 这把枪没有这个槽位，直接不显示 */
+    const cur=(INV.mods[gunId]||{})[sl];
+    const d=document.createElement('button');
+    d.className='ss'+(smith.slot===sl?' on':'');
+    d.innerHTML='<div class="ss-l">'+SLOT_CN[sl]+'</div><div class="ss-v"></div>';
+    d.querySelector('.ss-v').textContent = cur ? PARTS[cur].name : '未安装';
+    d.addEventListener('click', ()=>{ smith.slot=sl; renderSmith(); });
+    slotsEl.appendChild(d);
+  });
+
+  /* 数值对比 */
+  const st=$('smithStats'); let html='';
+  const fmt=(v,dg)=>String(+Number(v).toFixed(dg));
+  gunStatRows(gunId).forEach(r=>{
+    const diff = Math.abs(r.now-r.base) > 1e-9;
+    const good = (r.now-r.base)*r.dir > 0;
+    html += '<div class="st-row"><span>'+r.label+'</span><b'+(diff?(good?' class="up"':' class="down"'):'')+'>'+
+      fmt(r.base,r.digits)+(diff?(' → '+fmt(r.now,r.digits)):'')+'</b></div>';
+  });
+  st.innerHTML=html;
+
+  /* 可装配件 */
+  const list=$('smithList'); list.innerHTML='';
+  const sl=smith.slot;
+  const cands=Object.keys(PARTS).filter(id=>PARTS[id].slot===sl);
+  if(!cands.length){ list.innerHTML='<div style="font-size:9px;color:rgba(223,230,236,.3)">该槽位没有可用配件</div>'; }
+  cands.forEach(id=>{
+    const p=PARTS[id], own=partCount(id);
+    const fits=partFits(id,gunId);
+    const installed=(INV.mods[gunId]||{})[sl]===id;
+    const d=document.createElement('button');
+    d.className='spart'+(installed?' on':'')+(fits?'':' bad');
+    d.innerHTML='<div class="sp-i">'+partIcon(id,24)+'</div><div class="sp-t">'+
+      '<div class="sp-n">'+esc(p.name)+'</div><div class="sp-d">'+esc(p.desc)+'</div>'+
+      '<div class="sp-d" style="color:'+(fits?'#7ee081':'#ff8a80')+'">'+esc(
+        installed?'已装在枪上' : (fits?('背包中 ×'+own) : '不适用于这把枪'))+'</div></div>';
+    d.addEventListener('click', ()=>{
+      if(!fits){ toast('这个配件不适用于这把枪'); return; }
+      if(installed){ uninstallPart(gunId, sl); }
+      else { installPart(gunId, id); }
+      renderSmith(); renderBag(); renderHotbar();
+      if(updateAmmoUI) updateAmmoUI();
+    });
+    list.appendChild(d);
+  });
+
+  const foot=$('smithFoot'); if(foot){
+    const cur=(INV.mods[gunId]||{})[sl];
+    const un=document.getElementById('smithUninstall');
+    if(un){ un.disabled=!cur; un.textContent=cur?('卸下 '+PARTS[cur].name):'卸下'; }
+  }
+}
+
+/* 改装界面：大图可旋转 */
+function bindSmith(){
+  const view=$('smithView'); if(!view) return;
+  let rot=0, dragging=false, lx=0;
+  view.addEventListener('pointerdown', e=>{
+    dragging=true; lx=e.clientX; view.setPointerCapture && view.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  view.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    rot += (e.clientX-lx)*0.9; lx=e.clientX;
+    const svg=view.querySelector('svg');
+    if(svg){
+      const k=Math.cos(rot*Math.PI/180);
+      svg.style.transform='perspective(700px) rotateY('+(rot%360)+'deg)';
+      svg.style.transformOrigin='50% 50%';
+      svg.style.opacity=String(Math.max(0.25, Math.abs(k)*0.85+0.15));
+    }
+  });
+  view.addEventListener('pointerup', ()=>{ dragging=false; });
+  view.addEventListener('pointercancel', ()=>{ dragging=false; });
+}
+
+/* ============================ 投掷物扩展 ============================ */
+
+/* 新增烟/火/EMP 的视觉与效果（扩展原 NADES） */
+function setupExtraNades(){
+  if(!NADES) return;
+  const N=NADES;
+  if(!N.smoke){
+    N.smoke = { name:'烟雾弹', short:'烟雾', fuse:2.0, dmg:0, radius:6.5, blind:0, color:0x6d7a84,
+                smoke:true, dur:15 };
+    NADE_ICONS.smoke = '<svg width="30" height="20" viewBox="0 0 30 20">'+
+      '<ellipse cx="15" cy="13" rx="7" ry="6.6" fill="#4d5a63" stroke="#dfe6ec" stroke-width="1.2"/>'+
+      '<rect x="12.6" y="1.5" width="4.8" height="5.4" rx="1" fill="#8a939c"/>'+
+      '<circle cx="10" cy="14" r="4" fill="#8fa0ab" opacity=".7"/>'+
+      '<circle cx="20" cy="13" r="4.4" fill="#8fa0ab" opacity=".6"/></svg>';
+  }
+  if(!N.fire){
+    N.fire = { name:'燃烧瓶', short:'燃烧', fuse:1.2, dmg:0, radius:4.2, blind:0, color:0xd05a22,
+               fire:true, dur:8 };
+    NADE_ICONS.fire = '<svg width="30" height="20" viewBox="0 0 30 20">'+
+      '<path d="M9 8h9v9a4 4 0 0 1-4 4h-1a4 4 0 0 1-4-4z" fill="#a8451d" stroke="#dfe6ec" stroke-width="1.1"/>'+
+      '<path d="M18 8c3-3 1-6 2-7-4 1-5 4-4 7z" fill="#ff9d3c" stroke="#dfe6ec" stroke-width=".9"/>'+
+      '<rect x="8" y="5" width="3" height="4" fill="#8a939c"/></svg>';
+  }
+  if(!N.emp){
+    N.emp = { name:'EMP 手雷', short:'EMP', fuse:3.0, dmg:0, radius:8.0, blind:0, color:0x3f6fd0,
+              emp:true, dur:4 };
+    NADE_ICONS.emp = '<svg width="30" height="20" viewBox="0 0 30 20">'+
+      '<ellipse cx="15" cy="12.5" rx="7" ry="7.2" fill="#2c3a58" stroke="#dfe6ec" stroke-width="1.2"/>'+
+      '<rect x="12.6" y="1.5" width="4.8" height="5.4" rx="1" fill="#8a939c"/>'+
+      '<path d="M10 12h10M12 9v6M18 9v6" stroke="#7fb0ff" stroke-width="1.2"/></svg>';
+  }
+}
+
+/* 烟/火/EMP 的实体效果 */
+const smokeZones=[]; const fireZones=[];
+function nadeSpecial(p, kind){
+  if(kind==='smoke'){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(3.2, 12, 9),
+      new THREE.MeshBasicMaterial({color:0x9fb0bc, transparent:true, opacity:0.36, depthWrite:false}));
+    m.position.copy(p); scene.add(m);
+    smokeZones.push({ mesh:m, t:15, r:3.4 });
+    toast('烟雾已展开');
+  } else if(kind==='fire'){
+    fireZones.push({ pos:p.clone(), t:8, tick:0 });
+    toast('地面开始燃烧');
+  } else if(kind==='emp'){
+    (enemies||[]).forEach(e=>{
+      if(e.dead||e.gone) return;
+      const d=e.obj.position.distanceTo(p);
+      if(d<=8){ e.flashT=Math.max(e.flashT||0, 2.2); e.fireT=Math.max(e.fireT||0,1.5); }
+    });
+    toast('EMP 脉冲：范围内敌人瞄具失效');
+  }
+}
+
+/* ============================ 每帧更新 ============================ */
+
+let gearT=0;
+let gearPanelOn = false;
+let hbLastAct = null;   /* 上一帧高亮的槽位，用来发现「手持变了但没人通知快捷栏」 */
+let gearSkipN = 0;
+
+/** 面板挡屏时的渲染闸门：背包 / 商店 / 改装是全屏的，3D 画面只剩背板后面
+ *  一点影影绰绰的东西，却仍然在跑「场景 + 枪模 + 泛光 5 次 blit + 合成」
+ *  整条链。弱机上这条链就是拖拽发卡的真正原因 —— DOM 拖拽要和它抢同一份
+ *  主线程与 GPU。这里把渲染降到 1/3 帧率：世界照常推进（不暂停），只是少画几帧。 */
+function gearRenderGate(){
+  if(!gearPanelOn){ gearSkipN = 0; return false; }
+  gearSkipN = (gearSkipN + 1) % 3;
+  return gearSkipN !== 0;
+}
+
+function gearTick(dt){
+  gearT+=dt;
+  /* 药品读条 */
+  if(player.medUse){
+    const m=MEDS[player.medUse.id];
+    /* 移动 / 开火 / 换枪 打断 */
+    const moving = Math.hypot(player.vel.x, player.vel.z) > 2.2;
+    if(moving || player.reloadT>0 || player.switching>0 || player.triggerHeld){
+      player.medUse=null;
+      toast('药品使用被打断');
+    } else {
+      player.medUse.t += dt;
+      if(player.medUse.t >= player.medUse.dur){
+        const id=player.medUse.id;
+        player.medUse=null;
+        finishMed(id);
+      }
+    }
+  }
+  /* 持续回血（止痛药） */
+  if(player.medRegen){
+    player.medRegen.t-=dt;
+    const k=Math.min(1, Math.max(0,player.medRegen.t/10));
+    player.hp=Math.min(player.maxHp||100, player.hp + player.medRegen.amt*k*dt);
+    if(player.medRegen.t<=0) player.medRegen=null;
+  }
+  /* 增益 */
+  if(player.buff){
+    player.buff.t-=dt;
+    if(player.buff.t<=0) player.buff=null;
+  }
+  player.gearSpeedMul = player.buff ? (1+player.buff.speed) : 1;
+  player.gearDmgRed   = (player.buff? player.buff.dr:0) + (INV.seen.helmet?0.08:0);
+
+  /* 烟雾 */
+  for(let i=smokeZones.length-1;i>=0;i--){
+    const s=smokeZones[i]; s.t-=dt;
+    s.mesh.scale.setScalar(1 + (15-s.t)*0.06);
+    s.mesh.material.opacity = Math.min(0.4, 0.36*Math.min(1, s.t/3));
+    if(s.t<=0){ scene.remove(s.mesh); smokeZones.splice(i,1); }
+  }
+  /* 火区 */
+  for(let i=fireZones.length-1;i>=0;i--){
+    const f=fireZones[i]; f.t-=dt; f.tick-=dt;
+    if(f.tick<=0){
+      f.tick=0.4;
+      (enemies||[]).forEach(e=>{
+        if(e.dead||e.gone) return;
+        const d=e.obj.position.distanceTo(f.pos);
+        if(d<3.4 && damageEnemy){
+          const chest=e.obj.position.clone(); chest.y+=1.0;
+          damageEnemy(e, 9, false, new THREE.Vector3(0,1,0), chest);
+        }
+      });
+      const pd=player.pos.clone(); pd.y+=player.height*0.5;
+      if(pd.distanceTo(f.pos)<3.0 && damagePlayer) damagePlayer(6, f.pos);
+    }
+    if(f.t<=0) fireZones.splice(i,1);
+  }
+  /* 快捷栏节流刷新：只在换弹 / 用药 / 抬雷这些「有进度条在动」的时候重绘，
+     其余时间交给事件驱动，避免每帧重建 DOM 打断点击 */
+  let busy = !!player.medUse || !!player.cooking;
+  for(const g of (player.slots||[])){
+    const w = g ? WEAPONS[WIDX[g]] : null;
+    if(w && w.reloadT > 0) busy = true;
+  }
+  /* 快捷栏高亮同步：手持的那一槽由「事件」和「每帧兜底」两条路一起保证。
+     - 按 1/2/3、滚轮、点击快捷栏都会立刻 renderHotbar；
+     - 换枪动画走到一半、或者被网络快照改了 weapon 的时候，靠这里的节流
+       对比兜底，让金光永远跟手持同步（不变就不碰 DOM）。 */
+  const stK = hbState().kind;
+  if(stK !== hbLastAct){
+    hbLastAct = stK;
+    renderHotbar();
+  } else if(busy){ if(gearT > 0.05){ gearT = 0; renderHotbar(); } }
+  else gearT = 0;
+
+  /* 面板打开时把快捷栏压暗，别跟面板抢视线 */
+  const panelOn = (typeof bagOpen !== 'undefined' && bagOpen) ||
+                  (typeof shopOpen !== 'undefined' && shopOpen) ||
+                  (document.getElementById('smithPanel') &&
+                   !document.getElementById('smithPanel').classList.contains('hide'));
+  if(panelOn !== gearPanelOn){
+    gearPanelOn = !!panelOn;
+    document.body.classList.toggle('gear-panel', gearPanelOn);
+  }
+}
+
+/* ============================ 装配 ============================ */
+
+function buildHotbar(){
+  const hud=$('hud'); if(!hud) return;
+  let bar=$('hotbar');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='hotbar';
+    hud.appendChild(bar);
+  }
+  bindHotbar();
+}
+
+function buildShopUI(){
+  const card=document.querySelector('#shop .shop-card');
+  if(!card || $('shopTabs')) return;
+  /* 头部之后插三段：分类导航 / 配件子分类 / 当前分类标题。
+     它们都在 #shopList 之外，所以列表滚动时不会跟着跑。 */
+  const nav=document.createElement('div');
+  nav.className='shop-nav'; nav.id='shopTabs';
+  const sub=document.createElement('div');
+  sub.className='shop-sub'; sub.id='shopSubTabs'; sub.style.display='none';
+  const meta=document.createElement('div');
+  meta.className='shop-meta';
+  meta.innerHTML='<span id="shopCatName">全部装备</span><b id="shopCatCount">0 项</b>';
+  const list=$('shopList');
+  card.insertBefore(nav, list);
+  card.insertBefore(sub, list);
+  card.insertBefore(meta, list);
+}
+
+function buildBagUI(){
+  const panel=$('bagPanel'); if(!panel) return;
+  const card=panel.querySelector('.mp-card');
+  if(!card || $('bagTabs')) return;
+  card.classList.add('gear-card');
+  card.innerHTML =
+    '<div class="mp-card-h"><span>背包</span>'+
+      '<span class="gear-money">¥<b id="bagMoney">0</b></span>'+
+      '<button class="xbtn" id="bagClose" aria-label="关闭">✕</button></div>'+
+    '<div class="gear-tabs" id="bagTabs"></div>'+
+    '<div class="gear-hint">'+
+      '<span class="gh-i"><svg viewBox="0 0 16 16"><path d="M3.1 1.4l9.7 4.3-4.2 1.4-1.4 4.1z"/>'+
+      '<path d="M8.7 8.1l4.4 4.4-1.2 1.2-4.4-4.4z"/></svg></span>'+
+      '<span class="gh-t"><b>点击改装或使用，长按拖动</b>'+
+      '<i>点击枪械进入改装界面；长按 0.3 秒抓起物品，拖到下方快捷栏</i></span>'+
+    '</div>'+
+    '<div class="bag-grid" id="bagGrid"></div>'+
+    '<div class="gear-hb-drop" id="bagHotbar"></div>'+
+    '<div class="mp-note">只有放进快捷栏的武器才能在战斗中使用。</div>';
+  const old=$('bagClose'); if(old && old.addEventListener) old.addEventListener('click', e=>{
+    e.stopPropagation(); closeBag && closeBag();
+  });
+  bindBagDrag();
+}
+
+function buildSmithUI(){
+  if($('smithPanel')) return;
+  const d=document.createElement('div');
+  d.id='smithPanel'; d.className='hide';
+  d.innerHTML =
+   '<div class="smith-card">'+
+     '<div class="smith-top"><button class="sbtn ghost" id="smithBack">← 返回背包</button>'+
+       '<span class="st-n" id="smithTitle">枪械</span>'+
+       '<span class="gear-money">¥<b id="smithMoney">0</b></span>'+
+       '<button class="xbtn" id="smithClose" aria-label="关闭">✕</button></div>'+
+     '<div class="smith-body">'+
+       '<div class="smith-view" id="smithView"></div>'+
+       '<div class="smith-side"><div class="smith-slots" id="smithSlots"></div>'+
+         '<div class="smith-stats" id="smithStats"></div></div>'+
+     '</div>'+
+     '<div class="smith-list-wrap"><div class="mp-k">可装配件（背包中）</div>'+
+       '<div class="smith-list" id="smithList"></div></div>'+
+     '<div class="smith-foot"><button class="sbtn ghost" id="smithUninstall">卸下</button>'+
+       '<div class="mp-note">配件装上即从背包扣除，卸下退回背包；效果立刻生效。</div></div>'+
+   '</div>';
+  document.body.appendChild(d);
+  $('smithBack').addEventListener('click', ()=>{ closeSmith(); });
+  $('smithClose').addEventListener('click', ()=>{ closeSmith(); });
+  $('smithUninstall').addEventListener('click', ()=>{
+    if(!smith.gunId||!smith.slot) return;
+    uninstallPart(smith.gunId, smith.slot);
+    renderSmith(); renderBag(); renderHotbar();
+  });
+  bindSmith();
+}
+
+/* 覆盖原函数：让背包 / 商店 / HUD 走新的实现 */
+function patchGlobals(){
+  /* 用新实现覆盖宿主的同名全局函数（宿主内部调用会取到新值） */
+  window.shopRender   = renderShop;
+  window.renderShop   = renderShop;
+  window.bagRender    = renderBag;
+  window.renderBag    = renderBag;
+  window.renderHotbar = renderHotbar;
+  window.openSmith    = openSmith;
+  window.closeSmith   = closeSmith;
+  window.applyMods    = applyMods;
+  window.installPart  = installPart;
+  window.uninstallPart= uninstallPart;
+  window.useMed       = useMed;
+  window.g_gearTick   = gearTick;      /* 主循环每帧调用 */
+  window.g_gearRenderGate = gearRenderGate;  /* 面板挡屏时降低 3D 渲染频率 */
+  window.gunSVG       = gunSVG;
+  window.renderBagNow = renderBag;
+  window.gearReset    = gearReset;
+  window.GEAR = { MEDS:MEDS, PARTS:PARTS, AMMO:AMMO, GUN_SLOTS:GUN_SLOTS, GUN_CAL:GUN_CAL };
+}
+
+/** 每局重置：由 resetWorldState() 调用 */
+function gearReset(mode){
+  INV.meds  = {};
+  INV.parts = {};
+  INV.mods  = {};
+  INV.seen  = {};
+  if (INV.ammo) INV.ammo = {};
+  player.medKind = null;
+  player.medUse  = null;
+  player.medRegen= null;
+  player.buff    = null;
+  player.gearSpeedMul = 1;
+  player.gearDmgRed   = 0;
+  WEAPONS.forEach(w=>{ if(w.__base){ w.magSize = w.__base.magSize; } });
+  for (const g of (INV.guns||[])){ INV.mods[g]={}; applyMods(g); }
+  smith.gunId = null; smith.slot = null;
+  if ($('smithPanel')) $('smithPanel').classList.add('hide');
+  try{ renderHotbar(); }catch(e){}
+  try{ renderBag(); }catch(e){}
+}
+
+function init(){
+  setupExtraNades();
+  buildHotbar();
+  buildShopUI();
+  buildBagUI();
+  buildSmithUI();
+  patchGlobals();
+  /* 所有已拥有的枪按当前改装刷新数值 */
+  INV.guns.forEach(g=>applyMods(g));
+  renderHotbar(); renderBag(); renderShop();
+
+  /* 背包 / 商店打开时刷新 */
+  const bagBtn=$('bagClose');
+  if(bagBtn) bagBtn.addEventListener('click', ()=>{ setTimeout(renderBag,0); });
+  const shopClose=$('shopClose');
+  if(shopClose) shopClose.addEventListener('click', ()=>{ setTimeout(renderShop,0); });
+
+  /* ESC 关改装面板（数字键 1-4 由宿主键盘分支统一派发） */
+  addEventListener('keydown', e=>{
+    if(e.code==='Escape' && !$('smithPanel').classList.contains('hide')) closeSmith();
+  });
+}
+
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+})();
 
 requestAnimationFrame(frame);
 </script>
