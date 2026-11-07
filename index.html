@@ -1293,7 +1293,7 @@ body.gear-panel #hotbar{opacity:.25;}
 
 /* ---- 分类导航条 ---- */
 #shop .shop-nav{
-  display:grid;grid-template-columns:repeat(6,1fr);gap:4px;
+  display:grid;grid-template-columns:repeat(7,1fr);gap:4px;
   margin:12px 14px 0;padding:5px;
   background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.34));
   border:1px solid rgba(223,230,236,.075);
@@ -1474,6 +1474,11 @@ body.gear-panel #hotbar{opacity:.25;}
 }
 
 /* ---- 窄屏 / 触屏 ---- */
+@media (max-width:400px){
+  #shop .shop-nav{gap:1px;padding:3px;}
+  #shop .cat-tab .ct-lb{font-size:8.5px;letter-spacing:0;}
+  #shop .cat-tab .ct-ic svg{width:15px;height:15px;}
+}
 @media (max-width:560px){
   #shop{padding:8px;}
   #shop .shop-card{width:100%;min-height:min(440px,78vh);max-height:92vh;}
@@ -7007,7 +7012,7 @@ function updateSlide(dt){
 function wantCrouchKey(){ return !!(keys['ControlLeft']||keys['ControlRight']||keys['KeyC']||TOUCH.crouch); }
 
 /* ---------------- 陀螺仪 ---------------- */
-const GYRO = { calib:false, baseG:0, baseB:0, yawRate:0, pitchRate:0, listener:false };
+const GYRO = { calib:false, baseG:0, baseB:0, yawRate:0, pitchRate:0, listener:false, lastMotion:0 };
 function gyroApplyScale(){
   const t = $('tBtns');
   if (t) t.style.setProperty('--pads', String(SET.padScale));
@@ -7019,39 +7024,71 @@ function gyroApplyScale(){
   if (s2 && +s2.value !== Math.round(SET.padScale*100)) s2.value = String(Math.round(SET.padScale*100));
   if (typeof applyPadLayout === 'function') applyPadLayout();   // 自定义位置的负边距要跟着尺寸重算
 }
-function onOrient(e){
-  if (e.gamma === null || e.gamma === undefined) return;
-  if (!GYRO.calib){ GYRO.baseG = e.gamma; GYRO.baseB = e.beta; GYRO.calib = true; }
-  let dy = clamp(e.gamma - GYRO.baseG, -50, 50);
-  let dp = clamp(e.beta  - GYRO.baseB, -50, 50);
-  const ang = (screen.orientation && typeof screen.orientation.angle === 'number')
-              ? screen.orientation.angle : (window.orientation || 0);
-  let yawR = 0, pitR = 0;
-  if (ang === 90)       { yawR = -dy; pitR =  dp; }
-  else if (ang === 270) { yawR =  dy; pitR = -dp; }
-  else if (ang === 0)   { yawR =  dy; pitR = -dp; }
-  else                  { yawR = -dy; pitR =  dp; }
-  if (SET.gyroInvY) yawR = -yawR;
-  if (SET.gyroInvP) pitR = -pitR;
-  const k = 0.030;                                   // 每度倾斜对应的角速度
-  GYRO.yawRate   = clamp(yawR * k * SET.gyroSensY, -2.6, 2.6);
-  GYRO.pitchRate = clamp(pitR * k * SET.gyroSensP, -2.2, 2.2);
+function gyroOrientAngle(){
+  return (((screen.orientation && typeof screen.orientation.angle === 'number')
+          ? screen.orientation.angle : (window.orientation || 0)) % 360 + 360) % 360;
 }
-function gyroCalibrate(){ GYRO.calib = false; }
+/* 主路径：devicemotion.rotationRate 给的是真实角速度（deg/s），
+   与握持姿态无关、无需标定、不会像欧拉角那样在特殊姿态下换轴/突变。
+   横屏时：设备X轴≈世界竖直轴 → 绕X(beta)=水平转；设备Y轴≈世界水平轴 → 绕Y(gamma)=上下转。 */
+function onMotion(e){
+  if (!SET.gyro){ GYRO.yawRate = GYRO.pitchRate = 0; return; }
+  const rr = e.rotationRate;
+  if (!rr || (rr.beta == null && rr.gamma == null)) return;   // 无角速度数据时走 onOrient 兜底
+  GYRO.lastMotion = performance.now();
+  const b = rr.beta || 0, g = rr.gamma || 0;                  // deg/s
+  const ang = gyroOrientAngle();
+  let yR, pR;
+  if      (ang === 90)  { yR =  b; pR = -g; }
+  else if (ang === 270) { yR = -b; pR =  g; }
+  else if (ang === 180) { yR = -g; pR = -b; }
+  else                  { yR =  g; pR =  b; }                 // 竖屏兜底
+  if (SET.gyroInvY) yR = -yR;
+  if (SET.gyroInvP) pR = -pR;
+  const k = Math.PI / 180;                    // deg/s → rad/s，1:1：转多快视角就转多快
+  const ty = clamp(yR * k * SET.gyroSensY, -4.0, 4.0);
+  const tp = clamp(pR * k * SET.gyroSensP, -3.0, 3.0);
+  const sm = 0.55;                            // 轻度低通：去传感器抖动，几乎不引入延迟
+  GYRO.yawRate   += (ty - GYRO.yawRate)  * sm;
+  GYRO.pitchRate += (tp - GYRO.pitchRate) * sm;
+}
+/* 兜底：设备不支持 rotationRate 时，退回欧拉角差值（已修正横屏轴映射） */
+function onOrient(e){
+  if (e.beta === null || e.beta === undefined ||
+      e.gamma === null || e.gamma === undefined) return;
+  if (performance.now() - GYRO.lastMotion < 1000) return;     // 有角速度数据就不启用
+  if (!GYRO.calib){ GYRO.baseB = e.beta; GYRO.baseG = e.gamma; GYRO.calib = true; }
+  const db = clamp(e.beta  - GYRO.baseB, -50, 50);
+  const dg = clamp(e.gamma - GYRO.baseG, -50, 50);
+  const ang = gyroOrientAngle();
+  let yR, pR;
+  if      (ang === 90)  { yR =  db; pR = -dg; }
+  else if (ang === 270) { yR = -db; pR =  dg; }
+  else if (ang === 180) { yR = -dg; pR = -db; }
+  else                  { yR =  dg; pR =  db; }
+  if (SET.gyroInvY) yR = -yR;
+  if (SET.gyroInvP) pR = -pR;
+  const k = 0.030;                                   // 每度倾斜对应的角速度
+  GYRO.yawRate   = clamp(yR * k * SET.gyroSensY, -2.6, 2.6);
+  GYRO.pitchRate = clamp(pR * k * SET.gyroSensP, -2.2, 2.2);
+}
 function gyroSetOn(on){
   SET.gyro = !!on;
   if (SET.gyro){
-    gyroCalibrate();
+    GYRO.yawRate = GYRO.pitchRate = 0;
     if (!GYRO.listener){
+      addEventListener('devicemotion', onMotion);
       addEventListener('deviceorientation', onOrient);
       GYRO.listener = true;
     }
-    /* iOS 13+ 需要用户手势里申请权限 */
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
+    const deny = ()=>{ SET.gyro = false; syncCfgUI(); };
+    /* iOS 13+ 需要用户手势里申请权限（devicemotion / deviceorientation 各自的 API） */
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function'){
+      DeviceMotionEvent.requestPermission().then(r=>{ if (r !== 'granted') deny(); }).catch(deny);
+    } else if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function'){
-      DeviceOrientationEvent.requestPermission().then(r=>{
-        if (r !== 'granted'){ SET.gyro = false; syncCfgUI(); }
-      }).catch(()=>{ SET.gyro = false; syncCfgUI(); });
+      DeviceOrientationEvent.requestPermission().then(r=>{ if (r !== 'granted') deny(); }).catch(deny);
     }
   } else {
     GYRO.yawRate = GYRO.pitchRate = 0;
@@ -8954,8 +8991,9 @@ function vmKick(w){
    ========================================================================= */
 function damagePlayer(amount, fromPos){
   if (player.dead || G.over) return;
-  /* 护甲等级每级减伤 9%，和护甲值本身是两套东西 */
-  let dmg = amount * (1 - (player.armorLv|0) * 0.09);
+  /* 护甲等级每级减伤 9%，和护甲值本身是两套东西；头灯 / 肾上腺素的减伤走 gearDmgRed */
+  let dmg = amount * (1 - (player.armorLv|0) * 0.09)
+                  * (1 - clamp(player.gearDmgRed||0, 0, 0.6));
   if (player.armor>0){
     const absorbed = dmg*0.5;
     player.armor -= absorbed;
@@ -9401,7 +9439,10 @@ function animateEnemy(e, dt){
 
   /* nameplate — suppressed on the menus, where it would read as debug overlay */
   const dCam = obj.position.distanceTo(camera.position);
-  e.tag.sprite.visible = G.started && dCam < 46;
+  /* 热成像：开镜时名牌识别距离翻倍（烟雾 / 暗角里也能认出人形） */
+  const wpnT = WEAPONS[player.weapon];
+  const thermOn = !!(wpnT && wpnT.thermal) && player.adsEase > 0.45;
+  e.tag.sprite.visible = G.started && dCam < (thermOn ? 92 : 46);
   if (e.tag.sprite.visible){
     /* the sprite lives in world space, so a narrowed FOV magnifies it along
        with everything else — at 15x a nameplate covers the man wearing it.
@@ -10416,6 +10457,9 @@ function updatePlayer(dt){
   if (wl>0){ wx/=wl; wz/=wl; }
 
   let maxSpeed = player.crouch?CROUCH_SPEED:(player.sprint?SPRINT_SPEED:WALK_SPEED);
+  /* 增益 / 配件带来的移速倍率（肾上腺素、鼓形弹匣这类）。以前这个值只写不读，
+     等于所有「移速 ±X%」的文案都没生效。 */
+  maxSpeed *= (player.gearSpeedMul || 1);
   if (player.reloadT>0) maxSpeed *= 0.86;
   maxSpeed *= 1 - 0.40*player.adsEase;
   /* 滑铲是一段自带速度的冲刺，不被普通步速钳住 */
@@ -10894,6 +10938,8 @@ function updateViewmodel(dt, mdx, mdy){
        screen height and full-auto turned the lower half of the frame into a white
        sheet. A real flash reads at roughly a sixth of frame height. */
     const sc = (0.065 + 0.075*flashPower) * (0.55+k*0.8);
+    /* 消焰器 / 消音器会把枪口焰压掉，补偿器反而更亮 —— 写在配件表的 flashMul 里 */
+    const fl = (w.flashMul===undefined ? 1 : w.flashMul);
     /* The sprites hang off vmScene rather than vmRoot, so hiding the gun behind
        the scope leaves them floating in the middle of the sight picture. Down a
        scope the muzzle is a metre forward and well below the optical axis; you
@@ -10901,14 +10947,14 @@ function updateViewmodel(dt, mdx, mdy){
     const seen = 1 - (w.scope ? clamp((player.adsEase-0.45)/0.40, 0, 1) : 0);
     muzzleSprite.scale.set(sc,sc,1);
     muzzleSprite.material.rotation = (muzzleSprite.material.rotation||0);
-    muzzleSprite.material.opacity = k*seen;
+    muzzleSprite.material.opacity = k*seen*fl;
     muzzleGlow.scale.set(sc*1.9, sc*1.9, 1);
-    muzzleGlow.material.opacity = k*0.62*seen;
+    muzzleGlow.material.opacity = k*0.62*seen*fl;
     vmMuzzleLight.position.copy(_tmpV);
-    vmMuzzleLight.intensity = k*9*flashPower*seen;
+    vmMuzzleLight.intensity = k*9*flashPower*seen*fl;
     camera.getWorldDirection(_fwd);
     muzzleLight.position.copy(camera.position).addScaledVector(_fwd,0.8);
-    muzzleLight.intensity = k*11*flashPower;
+    muzzleLight.intensity = k*11*flashPower*fl;
     if (flashT<=0){
       muzzleSprite.material.opacity=0; muzzleGlow.material.opacity=0;
       vmMuzzleLight.intensity=0; muzzleLight.intensity=0;
@@ -14910,19 +14956,19 @@ const PARTS = {
   /* ---- 枪口 ---- */
   suppressor : { name:'消音器',      slot:'muzzle', guns:null, price:420, tag:'枪口',
                  desc:'枪声传播距离减半 · 枪口焰消失 · 后坐力 -5%', acc:'#5c646c',
-                 mods:{ noise:0.5, recoilV:0.95, recoilH:0.95 }, vis:{mz:'tube', len:20} },
+                 mods:{ noise:0.5, recoilV:0.95, recoilH:0.95, flashMul:0.30 }, vis:{mz:'tube', len:20} },
   tacsupp    : { name:'战术消音器',  slot:'muzzle', guns:null, price:760, tag:'枪口',
                  desc:'消音 + 后坐力 -8%，伤害 -5%', acc:'#4a5259',
-                 mods:{ noise:0.45, recoilV:0.92, recoilH:0.92, damage:0.95 }, vis:{mz:'tube', len:26} },
+                 mods:{ noise:0.45, recoilV:0.92, recoilH:0.92, damage:0.95, flashMul:0.15 }, vis:{mz:'tube', len:26} },
   compensator: { name:'补偿器',      slot:'muzzle', guns:null, price:380, tag:'枪口',
                  desc:'垂直后坐力 -18%、水平 -10% · 枪口焰 +20%', acc:'#7d858c',
-                 mods:{ recoilV:0.82, recoilH:0.90 }, vis:{mz:'comp', len:10} },
+                 mods:{ recoilV:0.82, recoilH:0.90, flashMul:1.20 }, vis:{mz:'comp', len:10} },
   flashhider : { name:'消焰器',      slot:'muzzle', guns:null, price:190, tag:'枪口',
                  desc:'枪口焰完全消失，开火后不易被发现', acc:'#6b737a',
-                 mods:{ noise:0.82 }, vis:{mz:'cone', len:8} },
+                 mods:{ noise:0.82, flashMul:0 }, vis:{mz:'cone', len:8} },
   heavycomp  : { name:'重型制退器',  slot:'muzzle', guns:['rifle','sniper'], price:640, tag:'枪口',
                  desc:'后坐力 -28%，但举枪速度 -15%、移速 -5%', acc:'#5a5f66',
-                 mods:{ recoilV:0.72, recoilH:0.78, draw:1.15, moveSpread:1.05 }, vis:{mz:'comp', len:14} },
+                 mods:{ recoilV:0.72, recoilH:0.78, draw:1.15, moveSpeed:0.95 }, vis:{mz:'comp', len:14} },
   choke      : { name:'收束器',      slot:'muzzle', guns:['shotgun'], price:300, tag:'枪口',
                  desc:'霰弹散布 -30%，有效射程 +40%', acc:'#8a6f3a',
                  mods:{ spread:0.70, falloff:1.4 }, vis:{mz:'ring', len:8} },
@@ -14939,10 +14985,10 @@ const PARTS = {
                mods:{ adsTime:0.95, moveSpread:0.90 }, vis:{op:'holo', len:12} },
   scope2   : { name:'2 倍镜',       slot:'optic', guns:['rifle','sniper'], price:520, tag:'瞄具',
                desc:'开镜倍率 ×2，远距离精度 +10%，开镜 -10%', acc:'#6d5a3a',
-               mods:{ adsFov:0.55, adsTime:1.10, adsSpread:0.90 }, vis:{op:'scope', len:28} },
+               mods:{ adsFov:0.55, adsTime:1.10, adsSpread:0.90 }, scoped:true, vis:{op:'scope', len:28} },
   scope4   : { name:'4 倍镜',       slot:'optic', guns:['rifle','sniper'], price:980, tag:'瞄具',
                desc:'倍率 ×4，精度 +20%，开镜 -25%、视野变窄', acc:'#5a4a30',
-               mods:{ adsFov:0.30, adsTime:1.25, adsSpread:0.80 }, vis:{op:'scope', len:44} },
+               mods:{ adsFov:0.30, adsTime:1.25, adsSpread:0.80 }, scoped:true, vis:{op:'scope', len:44} },
   laser    : { name:'激光指示器',   slot:'optic', guns:['rifle','shotgun','pistol'], price:430, tag:'瞄具',
                desc:'腰射散布 -30%，瞄准时精度 +5%', acc:'#c98a3a',
                mods:{ spread:0.70, adsSpread:0.95 }, vis:{op:'laser', len:8} },
@@ -14950,8 +14996,8 @@ const PARTS = {
                desc:'手枪专用：开镜速度 +15%、精度 +8%', acc:'#b04a44',
                mods:{ adsTime:0.85, adsSpread:0.92 }, vis:{op:'dot', len:7} },
   thermal  : { name:'热成像镜',     slot:'optic', guns:['rifle','sniper'], price:1600, tag:'瞄具',
-               desc:'敌人高亮（可穿烟），开镜速度 -40%', acc:'#2f7f6a',
-               mods:{ adsFov:0.40, adsTime:1.40 }, vis:{op:'thermal', len:38} },
+               desc:'2.5 倍热成像 · 开镜时敌人识别距离翻倍，开镜较慢', acc:'#2f7f6a',
+               mods:{ adsFov:0.40, adsTime:1.20 }, scoped:true, thermal:true, vis:{op:'thermal', len:38} },
 
   /* ---- 握把 ---- */
   vertgrip : { name:'垂直握把',     slot:'grip', guns:null, price:170, tag:'握把',
@@ -14968,10 +15014,10 @@ const PARTS = {
                mods:{ spread:0.75, adsSpread:0.95 }, vis:{gr:'laser'} },
   tacgrip  : { name:'战术前握把',   slot:'grip', guns:null, price:330, tag:'握把',
                desc:'垂直 -8%、水平 -8%，移动速度 -3%', acc:'#5f666c',
-               mods:{ recoilV:0.92, recoilH:0.92, moveSpread:1.03 }, vis:{gr:'tac'} },
+               mods:{ recoilV:0.92, recoilH:0.92, moveSpeed:0.97 }, vis:{gr:'tac'} },
   foldgrip  : { name:'折叠握把',     slot:'grip', guns:null, price:140, tag:'握把',
-               desc:'无后坐加成，收起时移动速度 +5%', acc:'#77828a',
-               mods:{ moveSpread:0.95 }, vis:{gr:'fold'} },
+               desc:'无后坐加成，移动速度 +5%', acc:'#77828a',
+               mods:{ moveSpeed:1.05 }, vis:{gr:'fold'} },
 
   /* ---- 弹匣 / 供弹 ---- */
   m56ext   : { name:'5.56 扩容弹匣', slot:'mag', guns:null, caliber:'5.56', price:360, tag:'弹匣',
@@ -14985,12 +15031,12 @@ const PARTS = {
                mods:{ mag:1.25, reload:0.80 }, vis:{mg:'quick'} },
   m56drum  : { name:'鼓形弹匣',     slot:'mag', guns:['rifle'], caliber:'5.56', price:1250, tag:'弹匣',
                desc:'弹容量 +120%，换弹 +60%，移速 -8%、举枪 -20%', acc:'#6b5a3a',
-               mods:{ mag:2.2, reload:1.6, moveSpread:1.08, draw:1.2 }, vis:{mg:'drum'} },
+               mods:{ mag:2.2, reload:1.6, moveSpeed:0.92, draw:1.2 }, vis:{mg:'drum'} },
   m56light : { name:'5.56 轻量弹匣', slot:'mag', guns:null, caliber:'5.56', price:200, tag:'弹匣',
                desc:'换弹时间 -15%，弹容量 -20%', acc:'#9aa4ac',
                mods:{ mag:0.8, reload:0.85 }, vis:{mg:'light'} },
   m56ap    : { name:'穿甲弹匣',     slot:'mag', guns:null, caliber:'5.56', price:880, tag:'弹匣',
-               desc:'伤害 +8%（对护甲 +20%），弹容量 -10%', acc:'#7f4a4a',
+               desc:'伤害 +8%，弹容量 -10%', acc:'#7f4a4a',
                mods:{ damage:1.08, mag:0.9 }, vis:{mg:'ap'} },
   m9ext    : { name:'9mm 扩容弹匣',  slot:'mag', guns:null, caliber:'9mm', price:280, tag:'弹匣',
                desc:'弹容量 +50%，换弹时间 +20%', acc:'#8a7a45',
@@ -14998,7 +15044,7 @@ const PARTS = {
   m9quick  : { name:'9mm 快速弹匣',  slot:'mag', guns:null, caliber:'9mm', price:320, tag:'弹匣',
                desc:'换弹时间 -30%', acc:'#4d7f6a', mods:{ reload:0.70 }, vis:{mg:'quick'} },
   loader12 : { name:'快速装填器',   slot:'feed', guns:['shotgun'], price:340, tag:'供弹',
-               desc:'KS-12 专用：每次装填 +1 发，装填速度 +40%', acc:'#8a6f3a',
+               desc:'KS-12 专用：弹容 +1（8→9），换弹 -40%', acc:'#8a6f3a',
                mods:{ magAdd:1, reload:0.6 }, vis:{mg:'none'} }
 };
 
@@ -15242,7 +15288,7 @@ function gunSVG(gunId, w){
 
 const DEF_MODS = { recoilV:1, recoilH:1, spread:1, adsSpread:1, adsTime:1, adsFov:1,
                    mag:1, magAdd:0, reload:1, damage:1, noise:1, moveSpread:1, draw:1,
-                   spreadRecover:1, falloff:1 };
+                   spreadRecover:1, falloff:1, moveSpeed:1, flashMul:1 };
 
 function gunModsOf(gunId){
   const list = (INV.mods && INV.mods[gunId]) || {};
@@ -15278,6 +15324,14 @@ function applyMods(gunId){
   w.spreadRecover = b.spreadRecover * m.spreadRecover;
   w.falloffStart  = b.falloffStart * m.falloff;
   w.falloffRange  = b.falloffRange * (m.falloff>1 ? 1.25 : 1);
+  w.moveSpeed     = (b.moveSpeed||1) * m.moveSpeed;
+  w.flashMul      = (b.flashMul||1) * m.flashMul;
+  /* 倍率镜装上去之后才算「镜枪」：镜筒覆盖、呼吸稳定、枪身隐藏都跟着这个走。
+     基础就带镜的狙（b.scope）保持原样。 */
+  const optId = (INV.mods && INV.mods[gunId] && INV.mods[gunId].optic) || null;
+  const optDef = optId ? PARTS[optId] : null;
+  w.scope   = !!b.scope || !!(optDef && optDef.scoped);
+  w.thermal = !!(optDef && optDef.thermal);
   if(w.mag > w.magSize) w.mag = w.magSize;
 }
 /** 枪械数值变化表（改装界面用） */
@@ -15472,12 +15526,13 @@ function finishMed(id){
 /* ============================ 商店 ============================ */
 
 const SHOP_TABS = [
-  { id:'all',   name:'全部', en:'ALL' },
-  { id:'prop',  name:'道具', en:'GEAR' },
-  { id:'gun',   name:'枪械', en:'WEAPON' },
-  { id:'armor', name:'防具', en:'ARMOR' },
-  { id:'ammo',  name:'子弹', en:'AMMO' },
-  { id:'part',  name:'配件', en:'PARTS' }
+  { id:'all',   name:'全部',   en:'ALL' },
+  { id:'prop',  name:'道具',   en:'GEAR' },
+  { id:'nade',  name:'投掷物', en:'THROW' },
+  { id:'gun',   name:'枪械',   en:'WEAPON' },
+  { id:'armor', name:'防具',   en:'ARMOR' },
+  { id:'ammo',  name:'子弹',   en:'AMMO' },
+  { id:'part',  name:'配件',   en:'PARTS' }
 ];
 const PART_TABS = [
   { id:'all',   name:'全部' },
@@ -15495,6 +15550,9 @@ const CAT_ICONS = {
       '<rect x="1.6" y="9.1" width="5.3" height="5.3" rx=".7"/>'+
       '<rect x="9.1" y="9.1" width="5.3" height="5.3" rx=".7"/></svg>',
   prop:'<svg viewBox="0 0 16 16"><path d="M5.7 1.5h4.6c.5 0 .9.4.9.9v1.3h2c.9 0 1.6.7 1.6 1.6v7.1c0 .9-.7 1.6-1.6 1.6H2.8c-.9 0-1.6-.7-1.6-1.6V5.3c0-.9.7-1.6 1.6-1.6h2V2.4c0-.5.4-.9.9-.9zm.9 1.5v.7h2.8v-.7H6.6zM7 6.6v1.9H5.1v1.6H7v1.9h1.6v-1.9h1.9V8.5H8.6V6.6H7z"/></svg>',
+  nade:'<svg viewBox="0 0 16 16"><circle cx="7.3" cy="9.9" r="5.2"/>'+
+      '<rect x="5.9" y="2.2" width="4.6" height="2.3" rx=".6"/>'+
+      '<path d="M10.3 3.3h2.4c.9 0 1.6.7 1.6 1.6v1.5h-1.7V5.2c0-.2-.1-.3-.3-.3h-2z"/></svg>',
   gun:'<svg viewBox="0 0 16 16"><path d="M1.6 8.6h2.7l1.2-1.7h3.2v.8h4.6l1.9-1.2h1.1v2.1h-2.4l-1.2 1.7H9.9l-1.1 3.3H6.6l1.1-3.3H5.1l-.9 3.1H2.1l1-3.1H1.6z"/></svg>',
   armor:'<svg viewBox="0 0 16 16"><path d="M8 1.1l5.7 2.1v4.4c0 3.3-2.4 6-5.7 7.3C4.7 13.6 2.3 10.9 2.3 7.6V3.2L8 1.1zm0 2.1L4.2 4.6v3c0 2.3 1.5 4.1 3.8 5.2 2.3-1.1 3.8-2.9 3.8-5.2v-3L8 3.2z"/></svg>',
   ammo:'<svg viewBox="0 0 16 16"><path d="M8 1c2 1.7 3 3.7 3 6v6.3c0 .9-.7 1.7-1.7 1.7H6.7c-.9 0-1.7-.8-1.7-1.7V7c0-2.3 1-4.3 3-6z"/></svg>',
@@ -15514,10 +15572,10 @@ function shopItems(){
       why(){ return null; },
       buy(){ INV.meds[id] = (INV.meds[id]||0)+1; autoEquip('med', id); } });
   }
-  /* 投掷物 */
+  /* 投掷物：单独成一类（原来和药品挤在「道具」里，翻起来混） */
   for(const id in NADES){
     const nd = NADES[id];
-    out.push({ group:'prop', id:'nade_'+id, name:nd.name,
+    out.push({ group:'nade', id:'nade_'+id, name:nd.name,
       desc:'引信 '+nd.fuse.toFixed(1)+'s'+(nd.blind?(' · 致盲 '+nd.blind+'s'):(' · 范围 '+nd.radius+'m')),
       price: nd.blind?230:150, icon:(NADE_ICONS&&NADE_ICONS[id])||'', cat:'nade', item:id,
       can(){ return G.mode!=='pvp' && nadeCount(id)<4 && !player.dead; },
@@ -15650,7 +15708,7 @@ function renderShop(){
     nameEl.textContent = nm + ' / ' + ((t&&t.en)||'ALL');
   }
   if(cntEl) cntEl.textContent = items.length + ' 项';
-  const SEC_CN = { prop:'道具', gun:'枪械', armor:'防具', ammo:'子弹', part:'配件' };
+  const SEC_CN = { prop:'道具', nade:'投掷物', gun:'枪械', armor:'防具', ammo:'子弹', part:'配件' };
   let lastSec = null, secIdx = 0;
   items.forEach(it=>{
     if(shopTab==='all' && it.group!==lastSec){
@@ -16382,7 +16440,9 @@ function gearTick(dt){
     player.buff.t-=dt;
     if(player.buff.t<=0) player.buff=null;
   }
-  player.gearSpeedMul = player.buff ? (1+player.buff.speed) : 1;
+  /* 增益 + 手持枪械的移速影响（重枪管 / 鼓形弹匣会拖慢脚步） */
+  const wNow = WEAPONS[player.weapon];
+  player.gearSpeedMul = (player.buff ? (1+player.buff.speed) : 1) * ((wNow && wNow.moveSpeed) || 1);
   player.gearDmgRed   = (player.buff? player.buff.dr:0) + (INV.seen.helmet?0.08:0);
 
   /* 烟雾 */
