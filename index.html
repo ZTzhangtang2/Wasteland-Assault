@@ -11578,11 +11578,22 @@ function mpInviteLink(){
 }
 
 /* ---------------- 房主 ---------------- */
+/* STUN 只能"打洞"直连；两台设备不在同一内网（如一台 4G、一台 WiFi、
+   跨运营商 NAT）时打洞会失败，没有 TURN 兜底就会永远卡在"正在连接"。
+   因此这里加了公共 TURN 中继。公共 TURN 只作救急，正式使用建议自建
+   coturn 或购买 metered.ca / Cloudflare Calls 的 TURN 服务换掉账号密码。 */
+const TURN_CREDENTIALS = { username:'openrelayproject', credential:'openrelayproject' };
 const ICE = { iceServers:[
   { urls:'stun:stun.l.google.com:19302' },
   { urls:'stun:stun1.l.google.com:19302' },
-  { urls:'stun:global.stun.twilio.com:3478' }
+  { urls:'stun:global.stun.twilio.com:3478' },
+  { urls:[
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turns:openrelay.metered.ca:443?transport=tcp'   // TCP/443 兜底，可穿透防火墙
+    ], ...TURN_CREDENTIALS }
 ]};
+const ICE_CONNECT_TIMEOUT = 18000;   // ICE 穿透最长等待，超时给出明确提示
 
 function mpHostStart(){
   if (NET.peer){ mpShowPanel('host'); return; }
@@ -11687,6 +11698,15 @@ function mpAutoJoin(){
   NET.peer = peer;
   peer.on('open', ()=>{
     mpBindConn(peer.connect(peerIdFor(code), { reliable:true }), false);
+    /* ICE 穿透超时：没有 TURN 时跨网连接会无限卡住，这里给用户明确提示 */
+    setTimeout(()=>{
+      if (!NET.open && NET.peer === peer){
+        mpState('连接超时');
+        $('mpJoinNote').textContent = '连接超时：可能与房主不在同一网络且无法直连'
+          + '（NAT 穿透失败）。请让双方都改连同一 WiFi 再试，'
+          + '或房主重启房间重新生成房间码。';
+      }
+    }, ICE_CONNECT_TIMEOUT);
   });
   peer.on('error', err=>{
     const t = err && err.type;
