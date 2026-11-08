@@ -424,6 +424,8 @@
   button.btn{pointer-events:auto;cursor:pointer;margin-top:34px;font-family:inherit;font-size:13px;letter-spacing:.34em;font-weight:700;
     color:#fff;padding:15px 42px;background:rgba(255,179,64,.1);border:1px solid rgba(255,179,64,.55);transition:all .18s;}
   button.btn:hover{background:rgba(255,179,64,.24);box-shadow:0 0 30px rgba(255,179,64,.25);}
+  button.btnGhost{margin-top:14px;background:transparent;border-color:rgba(223,230,236,.22);color:rgba(223,230,236,.75);}
+  button.btnGhost:hover{background:rgba(223,230,236,.08);box-shadow:none;}
   button.btn:active{transform:translateY(1px);}
 
   /* ---------------- P2P 联机 ---------------- */
@@ -579,6 +581,29 @@
   #netBanner .t{font-size:clamp(18px,3.4vw,28px);font-weight:800;letter-spacing:.22em;color:#ff6a58;
     text-shadow:0 4px 24px rgba(0,0,0,.8);}
   #netBanner .s{margin-top:12px;font-size:10px;letter-spacing:.18em;color:rgba(223,230,236,.55);}
+
+  /* 对局中的实时在线人数角标：全员可见，随加入/离开即时刷新 */
+  #mpLive{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:56;
+    font-size:10px;letter-spacing:.22em;color:rgba(223,230,236,.62);
+    background:rgba(5,8,11,.55);border:1px solid rgba(223,230,236,.14);
+    padding:5px 14px;border-radius:20px;pointer-events:none;display:none;}
+  #mpLive.on{display:block;}
+
+  /* 房主断线提示：成员收到提示后自己选「重新连接」还是「退出房间」 */
+  #dropModal{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
+    background:rgba(2,4,6,.66);}
+  #dropModal.on{display:flex;}
+  #dropModal .card{width:min(340px,86vw);background:#0b0f14;border:1px solid rgba(223,230,236,.16);
+    border-radius:10px;padding:22px 20px;text-align:center;}
+  #dropModal .t{font-size:16px;font-weight:800;letter-spacing:.2em;color:#ff6a58;}
+  #dropModal .s{margin-top:10px;font-size:11px;line-height:1.7;color:rgba(223,230,236,.55);}
+  #dropModal .acts{margin-top:18px;display:flex;gap:10px;}
+  #dropModal button{flex:1;font-family:inherit;font-size:11px;letter-spacing:.18em;font-weight:700;
+    color:#e6edf3;background:rgba(223,230,236,.08);border:1px solid rgba(223,230,236,.2);
+    border-radius:6px;padding:11px 0;cursor:pointer;}
+  #dropModal button:hover{background:rgba(223,230,236,.14);}
+  #dropModal #dropReconnect{color:#0b0f14;background:#ffb340;border-color:#ffb340;}
+  #dropModal #dropReconnect:hover{background:#ffc266;}
 
   #pause{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
     background:rgba(3,5,7,.72);z-index:15;}
@@ -1638,6 +1663,7 @@ body.gear-panel #hotbar{opacity:.25;}
     <div class="stat"><div class="v" id="sTime">0:00</div><div class="k" id="sTimeK">存活时间</div></div>
   </div>
   <button class="btn" id="restartBtn">重新部署</button>
+  <button class="btn btnGhost" id="exitBtn">退出游戏</button>
 </div>
 
 <!-- P2P 联机面板 -->
@@ -1682,6 +1708,18 @@ body.gear-panel #hotbar{opacity:.25;}
 
     <div id="mpLeaveWrap" class="hide">
       <button class="mp-leave" id="mpLeave">退出房间</button>
+    </div>
+  </div>
+</div>
+
+<!-- 房主断线提示：成员收到提示后选择重连或退出 -->
+<div id="dropModal">
+  <div class="card">
+    <div class="t">房主已断开连接</div>
+    <div class="s" id="dropSub">与房主的连接已断开，正在尝试自动重连…</div>
+    <div class="acts">
+      <button id="dropReconnect">重新连接</button>
+      <button id="dropExit">退出房间</button>
     </div>
   </div>
 </div>
@@ -8121,7 +8159,7 @@ addEventListener('keydown', e=>{
   if (e.code==='Tab' && G.started && !G.over){ e.preventDefault(); toggleBag(); return; }
   if (e.code==='KeyM'){ e.preventDefault(); mmapToggle(); return; }
   if (['Space','KeyR','Digit1','Digit2','Digit3','Digit4','KeyV','Tab','ControlLeft'].includes(e.code)) e.preventDefault();
-  if (!G.running) return;
+  if (!G.running || G.paused) return;
   if (e.code==='KeyR') startReload();
   const di = ['Digit1','Digit2','Digit3','Digit4'].indexOf(e.code);
   if (di >= 0){
@@ -8177,7 +8215,7 @@ function isUIPress(e){
 let uiPress = false;
 addEventListener('mousedown', e=>{
   uiPress = isUIPress(e);
-  if (!G.running || uiPress) return;       // 点 UI / 面板不该顺带扣扳机
+  if (!G.running || G.paused || uiPress) return;   // 点 UI / 面板不该顺带扣扳机
   /* Latch the press. A click and release inside one frame — which is most
      quick taps at 140fps — used to set triggerHeld and clear it again before
      the update loop ever looked, and the shot simply never happened. The
@@ -8216,18 +8254,25 @@ addEventListener('contextmenu', e=>e.preventDefault());
    running behind the pause card. */
 function pauseGame(){
   if (!G.started || G.over || G.paused) return;
-  /* 先把暂停态立起来再收地图：mmapClose 会在非暂停态下 requestLock，
-     锁一拿到 pointerlockchange 就调 resumeGame，刚亮的暂停卡又给撤了 */
-  G.paused = true; G.running = false;
+  /* 联机时暂停只停“自己”，不停世界：以前房主一点暂停，G.running 一断，
+     整个权威模拟（丧尸 AI、快照广播）全停，队友那边就是满屏丧尸集体定格。
+     现在 G.running 保住，世界照跑 —— 暂停的人只是站着不动（并按 AFK
+     处理，AI 不再瞄他），风险自担。 */
+  const netRound = NET.open && !G.over;
+  G.paused = true;
+  if (!netRound) G.running = false;
   if (MMAP.open) mmapClose();                // 回暂停卡就不留一张全屏地图在上面
   G.pausedAt = performance.now();
   $('pauseLeave').classList.toggle('hide', !NET.open);
   $('pauseShop').classList.toggle('hide', !!NET.pvp || !G.started);
   $('pausePad').classList.toggle('hide', !IS_TOUCH);
   UI.pause.querySelector('.t').textContent = '已暂停';
-  UI.pause.querySelector('.s').textContent = IS_TOUCH ? '轻触继续' : '点击继续';
-  if (NET.guest && NET.open) netSend({ t:'afk', on:1 });
+  UI.pause.querySelector('.s').textContent = netRound
+    ? (IS_TOUCH ? '轻触继续 · 对局不会暂停' : '点击继续 · 对局不会暂停')
+    : (IS_TOUCH ? '轻触继续' : '点击继续');
+  if (NET.open) netSend({ t:'afk', on:1 });  // 房主/客机都上报：暂停的人 AI 不瞄
   player.ads=false; player.adsK=0; player.adsEase=0;
+  player.triggerHeld=false; player.clickBuf=0;
   UI._scopeK=-1; UI.scope.style.opacity=0; compMat.uniforms.scope.value=0;
   UI.cross.classList.remove('hidden'); vmRoot.visible=true;
   document.body.classList.remove('scoped');
@@ -8237,7 +8282,7 @@ function pauseGame(){
 }
 function resumeGame(){
   UI.pause.classList.remove('on');
-  if (NET.guest && NET.open) netSend({ t:'afk', on:0 });
+  if (NET.open) netSend({ t:'afk', on:0 });
   if (G.started && !G.over && G.paused){ G.paused=false; G.running=true; SFX.resume(); }
   else if (G.started && !G.over) G.running = true;
 }
@@ -8378,6 +8423,16 @@ UI.pause.addEventListener('click', ()=>{
   SFX.init(); if (IS_TOUCH) resumeGame(); else requestLock();
 });
 $('restartBtn').addEventListener('click', e=>{ e.stopPropagation(); enterFullscreen(true); restart(); });
+/* 结算页的退出：单机「退出游戏」回主菜单；联机则是解散房间 / 退出房间，
+   对方会收到对应提示（房主走 bye，队友掉线走 mpOnConnClose） */
+$('exitBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  if (NET.open) mpLeave(true);
+  else abortRound();
+  /* 从结算页退出时局已经结束，mpLeave/abortRound 不会切屏，这里补上 */
+  UI.endScreen.classList.add('hide');
+  UI.startScreen.classList.remove('hide');
+});
 
 /* ---- touch pad ---------------------------------------------------------
    The pad never synthesises key events. It writes a small state object that
@@ -10368,6 +10423,15 @@ function updatePlayer(dt){
     }
     return;
   }
+  /* 联机暂停：世界在跑，但暂停卡后面的人输入全部封住 —— 按着的键一律视为
+     松开，视角增量清零。松卡后重新按键即可恢复操作。 */
+  if (G.paused){
+    for (const k in keys) keys[k] = false;
+    TOUCH.mx = 0; TOUCH.my = 0;
+    TOUCH.sprint = false; TOUCH.jump = false; TOUCH.crouch = false; TOUCH.rescue = false;
+    player.spaceEdge = false;
+    player.triggerHeld = false; player.clickBuf = 0;
+  }
   /* ---- look ---- */
   player.yaw   -= mouseDX*SENS*sensScale;
   player.pitch -= mouseDY*SENS*sensScale;
@@ -11027,6 +11091,17 @@ function resetWorldState(){
   }
   enemies.length = 0;
   enemyHitMeshes = [];
+  /* 重开局把队友的战斗状态一并清零：上一局的血量/倒地残留留在房主手里，
+     客机自己看是满血，房主眼里却是个 0 血的人 —— 快照一广播，全队按旧血
+     掉，挨一枪就“再死一次”。合作与死斗都从这里重置。 */
+  for (let i=0;i<4;i++){
+    const r = NET.remotes[i];
+    r.dead = false; r.down = 0; r.downT = 0; r.afk = false;
+    r.maxHp = mode === 'pvp' ? PVP_HP : 100;
+    r.hp = r.maxHp;
+    r.armor = mode === 'pvp' ? PVP_ARMOR : 50;
+    if (NET.avatars[i] && r.on) NET.avatars[i].tag.draw(r.hp, false, r.maxHp);
+  }
   if (mode === 'pvp'){
     G.pvpKills = 0; NET.remoteKills = 0;
   } else if (mode !== 'survival'){
@@ -11132,6 +11207,7 @@ function startGame(fromNet, mode){
   G.started=true; G.running=true; G.over=false;
   G.maxShooters = 2;
   NET.ended=false;
+  mpUpdateRoster();     // 进战场点亮「在线 N/5」角标
   $('money').classList.toggle('hide', !!NET.pvp);   // 死斗没有补给
   if (NET.host && NET.open) netSend({ t:'start', time:G.time, mode:G.mode, map:MAP.id });
   if (IS_TOUCH){
@@ -11232,6 +11308,9 @@ function endGame(win){
   const bonus = win ? (500 + Math.floor(G.time) * 8) : Math.round(G.kills * 60 * KILL_PAY);
   addMoney(bonus);
   $('endSub').textContent = '第七区 — 仓库区 · 本局资金 +¥' + bonus;
+  /* 结算页第二颗按钮：单机回主菜单；房主散伙；队友退房 */
+  const xb = $('exitBtn');
+  if (xb) xb.textContent = NET.open ? (NET.host ? '解散房间' : '退出房间') : '退出游戏';
   closeShop();
   if (bagOpen) closeBag();
   SFX.alarm(win);
@@ -11388,9 +11467,11 @@ function mpUpdateRoster(){
   };
   if (NET.host){
     add('指挥官（房主）', true, '房主');
+    /* 只列已经连进来的人：没人来的座位不再占一整行“等待中” */
     for (let s=1; s<=4; s++){
       const e = connOfSeat(s);
-      add(e && e.name ? e.name : '支援兵 ' + s, !!e, e ? '已连接' : '等待中');
+      if (!e) continue;
+      add(e.name || ('支援兵 ' + s), true, '已连接');
     }
   } else {
     add('指挥官（房主）', NET.open, NET.open ? '已连接' : '连接中');
@@ -11411,6 +11492,23 @@ function mpUpdateRoster(){
       for (const r of NET.remotes) if (r.on && r !== NET.remotes[0]) n++;
     } else n = 1;
     c.textContent = n + '/5';
+  }
+  /* 对局中的实时在线角标：大厅看面板，进了战场看这枚，全员口径一致 */
+  let chip = $('mpLive');
+  if (!chip){
+    chip = document.createElement('div');
+    chip.id = 'mpLive';
+    document.body.appendChild(chip);
+  }
+  {
+    let n;
+    if (NET.host) n = guestCount() + 1;
+    else if (NET.open){
+      n = 2;
+      for (const r of NET.remotes) if (r.on && r !== NET.remotes[0]) n++;
+    } else n = 1;
+    chip.textContent = '在线 ' + n + '/5';
+    chip.classList.toggle('on', !!NET.open && !!G.started);
   }
 }
 function mpUpdateStartBtn(){
@@ -11585,6 +11683,7 @@ function mpBindConn(conn, asHost){
     conn.on('open', ()=>{
       /* 重连成功后把计数清零，下次掉线还能再救一次 */
       mpReconnectCancel();
+      mpDropPrompt(false);       // 房主回来了：撤掉断线提示
       NET.open = true;
       mpState('已连接', true);
       $('mpJoinNote').textContent = '已连接房主，等待房主开始任务…';
@@ -11602,7 +11701,7 @@ function mpOnConnClose(peerId){
   if (!e) return;
   delete NET.conns[peerId];
   const r = remoteOfSeat(e.seat);
-  if (r){ r.on = false; r.dead = false; r.down = 0; r.downT = 0; }
+  if (r){ r.on = false; r.dead = false; r.down = 0; r.downT = 0; r.afk = false; }
   removeAvatarAt(e.seat - 1);
   netSend({ t:'left', i:e.seat });          // 其他客机撤掉他的模型
   mpUpdateRoster();
@@ -11617,6 +11716,12 @@ function mpOnConnClose(peerId){
 }
 
 /* 客机侧：与房主的连接断了 */
+function mpDropPrompt(on, text){
+  const el = $('dropModal');
+  if (!el) return;
+  el.classList.toggle('on', !!on);
+  if (text) $('dropSub').textContent = text;
+}
 function mpOnDrop(){
   if (!NET.open && !NET.connecting && !NET.full) return;
   NET.open = false;
@@ -11624,7 +11729,7 @@ function mpOnDrop(){
   if (bagOpen) closeBag();
   for (let i=0;i<4;i++){
     const r = NET.remotes[i];
-    r.on = false; r.dead = false; r.down = 0; r.downT = 0;
+    r.on = false; r.dead = false; r.down = 0; r.downT = 0; r.afk = false;
     removeAvatarAt(i);
   }
   $('mpStart').disabled = true;
@@ -11638,6 +11743,9 @@ function mpOnDrop(){
   } else {
     mpState('连接已断开');
     $('mpJoinNote').textContent = '与房主的连接已断开';
+    /* 房主断了就明确告诉每个人，由自己决定重连还是退出 —— 别再让队友
+       盯着一张静默的连接卡猜自己是不是被踢了 */
+    mpDropPrompt(true, '与房主的连接已断开，正在尝试自动重连…');
   }
   if (G.running && !NET.host) NET.spectate = true;
   /* 客机掉线：自动重连。以前这里只把状态改成“连接已断开”，队友必须自己
@@ -11655,11 +11763,17 @@ function mpReconnectCancel(){
 }
 function mpReconnect(){
   if (NET.host || !NET.code || NET.reconnecting) return;
-  if (_reconTries >= 4){ mpState('连接已断开'); $('mpJoinNote').textContent = '重连失败，请刷新页面重新加入'; return; }
+  if (_reconTries >= 4){
+    mpState('连接已断开');
+    $('mpJoinNote').textContent = '重连失败，请刷新页面重新加入';
+    mpDropPrompt(true, '自动重连失败（已试 4 次）。可以让房主把房间码重新发你，或直接退出房间。');
+    return;
+  }
   if (typeof Peer === 'undefined') return;
   _reconTries++;
   NET.reconnecting = true;
   mpState('重连中…（' + _reconTries + '/4）');
+  mpDropPrompt(true, '与房主的连接已断开，正在重连（' + _reconTries + '/4）…');
   try { if (NET.peer) NET.peer.destroy(); } catch(_){}
   NET.peer = null;
   const peer = new Peer({ debug:0, config:ICE });
@@ -11683,6 +11797,7 @@ function mpReconnect(){
 /* ---------------- 退出房间 ---------------- */
 function mpResetUI(){
   mpState('未联机');
+  mpDropPrompt(false);
   $('mpPanel').classList.add('hide');
   $('mpLeaveWrap').classList.add('hide');
   $('mpStart').disabled = true;
@@ -11711,7 +11826,7 @@ function mpLeave(notify){
   NET.code = '';
   for (let i=0;i<4;i++){
     const r = NET.remotes[i];
-    r.on = false; r.dead = false; r.down = 0; r.downT = 0;
+    r.on = false; r.dead = false; r.down = 0; r.downT = 0; r.afk = false;
     removeAvatarAt(i);
   }
   mpResetUI();
@@ -11848,6 +11963,10 @@ function onNetData(m, seat){
       const r = NET.remotes[0];
       r.name = m.n || '指挥官'; r.on = true;
       spawnAvatarAt(0, r.name);
+    } else if (m.t === 'afk'){
+      /* 房主也会暂停（联机里暂停不冻结世界）：让队友知道他挂机了 */
+      const r = NET.remotes[0];
+      if (r) r.afk = !!m.on;
     } else if (m.t === 'w'){
       /* 房主在大厅里换了模式：跟上，别让两边模式不一致 */
       setNetMode(m.mode || 'coop');
@@ -12691,6 +12810,14 @@ $('mpCopyLink').addEventListener('click', e=>{
 });
 $('mpLeave').addEventListener('click', e=>{ e.stopPropagation(); mpLeave(true); });
 $('pauseLeave').addEventListener('click', e=>{ e.stopPropagation(); mpLeave(true); });
+/* 断线提示上的两颗按钮：手动再连一次，或者干脆退房 */
+$('dropReconnect').addEventListener('click', e=>{
+  e.stopPropagation();
+  mpReconnectCancel();
+  _reconTries = 0;
+  mpReconnect();
+});
+$('dropExit').addEventListener('click', e=>{ e.stopPropagation(); mpLeave(true); });
 $('mpStart').addEventListener('click', e=>{
   e.stopPropagation();
   if (!G.started) enterFullscreen(true);
