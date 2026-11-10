@@ -6347,6 +6347,13 @@ const E_MAT = {
   rust  : new THREE.MeshStandardMaterial({color:0x7d3324, roughness:.86, metalness:.10})     // 首领旧装甲
 };
 linearizeMats(E_MAT);
+/* buildEnemyModel 用同一张材质表 M 走「敌人」和「自定义外观」两条路径：
+   不传外观时 M 就是 E_MAT，这里补上语义别名，保证每个 M.xxx 都有值，
+   否则 new Mesh(geo, undefined) 会落成默认白色材质、迷彩贴图也会丢。
+   必须放在 linearizeMats 之后——别名指向同一对象，提前加会被转成两次而发暗。 */
+E_MAT.leg   = E_MAT.cloth;   // 腿部：默认沿用迷彩布
+E_MAT.torso = E_MAT.vest;    // 躯干装甲板
+E_MAT.hair  = E_MAT.helm;    // 发型基底（仅自定义外观分支用到）
 const INVIS = new THREE.MeshBasicMaterial({visible:false});
 
 /* =========================================================================
@@ -6423,17 +6430,24 @@ function collapseRig(root){
 function profMats(app){
   const mk = (base, hex)=>{
     const m = base.clone();
+    /* 自定义颜色必须是干净的纯色：E_MAT.cloth 带迷彩贴图，若直接拿它 clone，
+       color 会和贴图相乘变成花斑。后面几处基底本来就没 map，一并清掉无害。 */
+    m.map = null;
     try { m.color.set(hex).convertSRGBToLinear(); } catch(_e){ try { m.color.set(hex); } catch(_e2){} }
+    m.needsUpdate = true;
     return m;
   };
-  return {
+  /* 以 E_MAT 全键为底，只覆盖外观项。这样 buildEnemyModel 里任何 M.xxx
+     （含 webb/vest/gun/glass/accent/bone/rust 等）都不会是 undefined。 */
+  const M = Object.assign({}, E_MAT, {
     skin : mk(E_MAT.skin,  app.headC  || '#a87f5b'),
     torso: mk(E_MAT.vest,  app.torsoC || '#32342f'),
-    leg  : mk(E_MAT.cloth, app.legC   || '#3f4a56'),
+    leg  : mk(E_MAT.vest,  app.legC   || '#3f4a56'),   // 无贴图纯色基底
     boot : mk(E_MAT.boot,  app.bootC  || '#26262a'),
-    hair : mk(E_MAT.helm,  app.hairC  || '#2b2320'),
-    cloth: E_MAT.cloth     // 手臂维持迷彩
-  };
+    hair : mk(E_MAT.helm,  app.hairC  || '#2b2320')
+  });
+  M.cloth = E_MAT.cloth;    // 手臂维持原版迷彩，不参与染色
+  return M;
 }
 
 function buildEnemyModel(app){
@@ -6463,7 +6477,7 @@ function buildEnemyModel(app){
     const t = clamp(parseFloat(app.torso) || 1.0, 0.85, 1.30);
     torsoGrp.scale.set(t, 1 + (t-1)*0.5, t);
   }
-  capsuleGroup(torsoGrp, 0.215, 0.44, M.torso, 0, 1.20, 0);
+  capsuleGroup(torsoGrp, 0.215, 0.44, M.cloth, 0, 1.20, 0);   // 软躯干沿用迷彩布，与原版一致
   part(torsoGrp, B(0.455,0.50,0.315), M.torso, 0, 1.25, -0.005);      // carrier
   part(torsoGrp, B(0.30,0.20,0.075), M.torso, 0, 1.30, -0.175);       // front plate
   part(torsoGrp, B(0.115,0.115,0.075), E_MAT.webb, 0.135, 1.13, -0.175);  // mag pouches
