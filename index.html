@@ -1525,6 +1525,99 @@ body.gear-panel #hotbar{opacity:.25;}
   #shop .shop-foot{padding:8px 13px 10px;font-size:7.5px;}
 }
 
+  /* ---------- 房间聊天 ---------- */
+  #chatToast{position:absolute;right:26px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:6px;align-items:flex-end;pointer-events:none;z-index:6;max-width:min(300px,42vw);}
+  .cto{font-size:11px;letter-spacing:.04em;color:#e9eef3;background:rgba(6,10,14,.78);
+    border-right:3px solid rgba(80,220,255,.9);padding:7px 11px;border-radius:3px;
+    max-width:100%;overflow-wrap:break-word;animation:cmin .18s ease-out;
+    text-shadow:0 1px 3px #000;box-shadow:0 2px 10px rgba(0,0,0,.35);}
+  .cto b{color:#7fe0ff;font-weight:700;margin-right:2px;}
+  .cto.own{border-right-color:rgba(255,179,64,.95);}
+  .cto.own b{color:#ffcf85;}
+  .cto.out{opacity:0;transform:translateX(18px);transition:all .38s ease-in;}
+  #chatBtn{position:absolute;left:26px;bottom:118px;display:none;pointer-events:auto;cursor:pointer;
+    width:44px;height:44px;border-radius:6px;border:1px solid rgba(80,220,255,.4);
+    background:rgba(6,12,18,.82);color:#7fe0ff;font-size:18px;line-height:1;
+    align-items:center;justify-content:center;z-index:7;}
+  #chatBtn.show{display:flex;}
+  #chatBtn:active{transform:translateY(1px);}
+  #chatBox{position:absolute;left:26px;bottom:118px;width:min(340px,56vw);z-index:8;pointer-events:auto;
+    background:rgba(6,10,14,.9);border:1px solid rgba(80,220,255,.28);border-radius:5px;
+    display:flex;flex-direction:column;padding:9px 11px 7px;box-shadow:0 6px 24px rgba(0,0,0,.5);}
+  #chatBox.hide{display:none;}
+  #chatBox .chat-h{font-size:9px;letter-spacing:.16em;font-weight:700;color:rgba(127,224,255,.8);margin-bottom:6px;}
+  #chatLog{height:clamp(120px,24vh,220px);overflow-y:auto;display:flex;flex-direction:column;gap:3px;
+    scrollbar-width:thin;scrollbar-color:#3a5a6a transparent;}
+  .cm-msg{font-size:11px;line-height:1.45;color:#e9eef3;overflow-wrap:break-word;}
+  .cm-msg b{color:#7fe0ff;font-weight:700;}
+  .cm-msg.own b{color:#ffcf85;}
+  #chatInputRow{display:flex;gap:6px;margin-top:7px;}
+  #chatInput{flex:1;min-width:0;font-size:16px;font-family:inherit;color:#fff;
+    background:rgba(20,28,34,.9);border:1px solid rgba(127,224,255,.35);border-radius:3px;padding:8px 10px;}
+  #chatInput:focus{outline:none;border-color:rgba(127,224,255,.8);}
+  #chatInput::placeholder{color:rgba(180,200,215,.4);}
+  #chatSend{font-family:inherit;font-size:11px;letter-spacing:.12em;font-weight:700;color:#7fe0ff;
+    background:rgba(80,220,255,.12);border:1px solid rgba(127,224,255,.5);border-radius:3px;
+    padding:0 14px;min-height:40px;cursor:pointer;}
+  #chatSend:active{background:rgba(80,220,255,.24);}
+  #chatBox .chat-tip{font-size:8.5px;letter-spacing:.1em;color:rgba(180,200,215,.4);margin-top:5px;text-align:right;}
+  /* 触屏：左下 46%×78% 是移动摇杆，右下是开火/瞄准键，聊天入口只能放
+     右侧中段空白；toast 再往下错开，两者不叠。 */
+  body.touch #chatToast{right:10px;top:60%;max-width:56vw;}
+  body.touch #chatBtn{left:auto;right:10px;top:34%;bottom:auto;
+    width:48px;height:48px;font-size:20px;}
+  body.touch #chatBox{left:10px;right:10px;width:auto;bottom:auto;top:16vh;}
+  body.touch #chatBox .chat-tip{display:none;}
+  body.touch #chatLog{height:clamp(110px,22vh,190px);}
+  body.touch #chatSend{min-width:64px;padding:0 16px;}
+
+  /* ---------- 我的档案 ---------- */
+  #profPanel{position:fixed;inset:0;z-index:64;display:flex;align-items:center;justify-content:center;
+    background:rgba(2,4,6,.66);backdrop-filter:blur(3px);}
+  #profPanel.hide{display:none;}
+  #profPanel .mp-card{width:min(560px,94vw);max-height:90vh;overflow-y:auto;
+    scrollbar-width:thin;scrollbar-color:#ffb340 #0b1015;}
+  .prof-top{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px;}
+  /* 全局 canvas{position:absolute;inset:0} 是给全屏 3D 画布用的，
+     预览画布必须恢复静态定位，否则会飘到视口左上角、把 flex 布局撕开。 */
+  #profPreview{position:relative;inset:auto;flex:none;width:150px;height:170px;
+    background:radial-gradient(circle at 50% 30%,rgba(255,179,64,.10),rgba(10,14,18,.9) 72%);
+    border:1px solid rgba(255,179,64,.3);border-radius:6px;touch-action:none;}
+  .prof-name{flex:1;min-width:0;}
+  #profName{width:100%;font-size:16px;font-family:inherit;color:#fff;letter-spacing:.06em;
+    background:rgba(20,28,34,.9);border:1px solid rgba(255,179,64,.4);border-radius:3px;padding:9px 11px;margin-top:5px;}
+  #profName:focus{outline:none;border-color:rgba(255,179,64,.85);}
+  .prof-hint{font-size:9px;letter-spacing:.1em;color:rgba(180,200,215,.45);margin-top:5px;}
+  .prof-sec{margin-top:12px;padding-top:10px;border-top:1px solid rgba(223,230,236,.10);}
+  .prof-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px;}
+  .prof-chips button{font-family:inherit;font-size:11px;letter-spacing:.08em;font-weight:600;color:#cfd9e2;
+    background:rgba(223,230,236,.06);border:1px solid rgba(223,230,236,.22);border-radius:3px;
+    padding:8px 14px;min-height:36px;cursor:pointer;}
+  .prof-chips button.act{color:#ffcf85;border-color:rgba(255,179,64,.9);background:rgba(255,179,64,.18);}
+  .prof-swatches{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0 4px;}
+  .prof-swatches button{width:34px;height:34px;border-radius:5px;cursor:pointer;
+    border:2px solid rgba(223,230,236,.25);box-shadow:inset 0 1px 3px rgba(255,255,255,.18);}
+  .prof-swatches button.act{border-color:#ffb340;box-shadow:0 0 0 2px rgba(255,179,64,.4),inset 0 1px 3px rgba(255,255,255,.18);}
+  #profTorso{width:100%;margin:4px 0 8px;accent-color:#ffb340;height:28px;}
+  #profTorsoV{color:#ffcf85;letter-spacing:.06em;}
+  .prof-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:7px;margin-top:8px;}
+  .prof-stats .pst{background:rgba(223,230,236,.05);border:1px solid rgba(223,230,236,.14);
+    border-radius:4px;padding:9px 11px;}
+  .prof-stats .pst .v{font-size:16px;font-weight:700;color:#ffcf85;letter-spacing:.04em;}
+  .prof-stats .pst .k{font-size:8.5px;letter-spacing:.14em;color:rgba(180,200,215,.55);margin-top:3px;}
+  body.touch .prof-top{gap:10px;}
+  body.touch #profPreview{width:120px;height:140px;}
+  body.touch #profName{font-size:16px;padding:12px;min-height:44px;}
+  /* 触屏点击目标不小于 44px，戴手套也点得准 */
+  body.touch #profPanel .xbtn{width:44px;height:44px;font-size:16px;}
+  body.touch .prof-chips button{padding:11px 15px;font-size:12px;min-height:44px;}
+  body.touch .prof-swatches button{width:44px;height:44px;}
+  body.touch #profTorso{height:44px;}
+  body.touch #chatSend{min-width:72px;min-height:44px;padding:0 16px;}
+  body.touch #chatInput{min-height:44px;}
+  body.touch .prof-stats{grid-template-columns:repeat(2,1fr);gap:6px;}
+
 </style>
 </head>
 <body>
@@ -1584,6 +1677,19 @@ body.gear-panel #hotbar{opacity:.25;}
   <div id="feed"></div>
   <div id="comms"></div>
 
+  <!-- 房间聊天：框外 toast 固定在屏幕右侧中部，一眼能注意到 -->
+  <div id="chatToast" aria-live="polite"></div>
+  <button id="chatBtn" aria-label="打开聊天">💬</button>
+  <div id="chatBox" class="hide">
+    <div class="chat-h">房间频道 · <span id="chatRoom"></span></div>
+    <div id="chatLog"></div>
+    <div id="chatInputRow">
+      <input id="chatInput" maxlength="80" placeholder="发送消息，全员可见…" enterkeyhint="send" autocomplete="off">
+      <button id="chatSend" aria-label="发送">发送</button>
+    </div>
+    <div class="chat-tip">Enter 发送 · Esc 关闭</div>
+  </div>
+
   <div id="vitals">
     <div class="row"><span class="lbl">生命</span><span id="hpNum" class="mono">100</span></div>
     <div class="bar"><span id="hpFill"></span></div>
@@ -1632,6 +1738,7 @@ body.gear-panel #hotbar{opacity:.25;}
       <button class="mm-btn" id="mmSingle"><b>单人游戏</b><small>潜入仓库区 · 独自完成任务</small></button>
       <button class="mm-btn" id="mmMap"><b>选择地图</b><small>仓库区 · 灰蓝街区 · 战术网格</small></button>
       <button class="mm-btn" id="mmMulti"><b>多人游戏</b><small>创建 / 加入房间 · 合作或对抗</small></button>
+      <button class="mm-btn" id="mmProfile"><b>我的档案</b><small>名字 · 外观定制 · 生涯数据</small></button>
       <button class="mm-btn" id="mmSettings"><b>设置</b><small>灵敏度 · 陀螺仪 · 键位与触屏</small></button>
     </div>
     <div class="hint" id="menuHint">操作说明已收进「设置 → 键位说明」· 当前模式：<b id="menuModeName">突袭仓库区</b><br><span id="menuTouchHint"></span></div>
@@ -1664,6 +1771,55 @@ body.gear-panel #hotbar{opacity:.25;}
   </div>
   <button class="btn" id="restartBtn">重新部署</button>
   <button class="btn btnGhost" id="exitBtn">退出游戏</button>
+</div>
+
+<!-- 我的档案：名字、外观定制与本地生涯数据 -->
+<div id="profPanel" class="hide">
+  <div class="mp-card">
+    <div class="mp-card-h"><span>我的档案</span><button class="xbtn" id="profClose" aria-label="关闭">✕</button></div>
+
+    <div class="prof-top">
+      <canvas id="profPreview" width="300" height="340" aria-label="角色预览"></canvas>
+      <div class="prof-name">
+        <div class="mp-k">代号</div>
+        <input id="profName" maxlength="12" placeholder="输入名字" autocomplete="off">
+        <div class="prof-hint">联机时全员可见</div>
+      </div>
+    </div>
+
+    <div class="prof-sec">
+      <div class="mp-k">发型</div>
+      <div class="prof-chips" id="profHair"></div>
+      <div class="mp-k">发色</div>
+      <div class="prof-swatches" id="profHairC"></div>
+    </div>
+
+    <div class="prof-sec">
+      <div class="mp-k">头型</div>
+      <div class="prof-chips" id="profHead"></div>
+      <div class="mp-k">肤色</div>
+      <div class="prof-swatches" id="profHeadC"></div>
+    </div>
+
+    <div class="prof-sec">
+      <div class="mp-k">体型 <span id="profTorsoV" class="mono">标准</span></div>
+      <input type="range" id="profTorso" min="0.85" max="1.30" step="0.05" value="1.0">
+      <div class="mp-k">躯干颜色</div>
+      <div class="prof-swatches" id="profTorsoC"></div>
+    </div>
+
+    <div class="prof-sec">
+      <div class="mp-k">腿部颜色</div>
+      <div class="prof-swatches" id="profLegC"></div>
+      <div class="mp-k">靴子颜色</div>
+      <div class="prof-swatches" id="profBootC"></div>
+    </div>
+
+    <div class="prof-sec">
+      <div class="mp-k">生涯数据 <small class="prof-hint">本机累计</small></div>
+      <div class="prof-stats" id="profStats"></div>
+    </div>
+  </div>
 </div>
 
 <!-- P2P 联机面板 -->
@@ -6262,7 +6418,26 @@ function collapseRig(root){
   }
 }
 
-function buildEnemyModel(){
+/* 按档案外观生成独立材质（clone 自 E_MAT，保持和共享材质同样的色彩空间）。
+   每个队友一套，collapseRig 按材质合并几何体，多几个材质只是多几个 draw call。 */
+function profMats(app){
+  const mk = (base, hex)=>{
+    const m = base.clone();
+    try { m.color.set(hex).convertSRGBToLinear(); } catch(_e){ try { m.color.set(hex); } catch(_e2){} }
+    return m;
+  };
+  return {
+    skin : mk(E_MAT.skin,  app.headC  || '#a87f5b'),
+    torso: mk(E_MAT.vest,  app.torsoC || '#32342f'),
+    leg  : mk(E_MAT.cloth, app.legC   || '#3f4a56'),
+    boot : mk(E_MAT.boot,  app.bootC  || '#26262a'),
+    hair : mk(E_MAT.helm,  app.hairC  || '#2b2320'),
+    cloth: E_MAT.cloth     // 手臂维持迷彩
+  };
+}
+
+function buildEnemyModel(app){
+  const M = app ? profMats(app) : E_MAT;
   const model = new THREE.Group();
   const body  = new THREE.Group(); model.add(body);
 
@@ -6270,55 +6445,85 @@ function buildEnemyModel(){
   const legs = [];
   for (const s of [-1,1]){
     const hip = new THREE.Group(); hip.position.set(s*0.135, 0.90, 0); body.add(hip);
-    part(hip, EB(0.185,0.46,0.20), E_MAT.cloth, 0,-0.23,0);
+    part(hip, EB(0.185,0.46,0.20), M.leg, 0,-0.23,0);
     part(hip, B(0.155,0.115,0.055), E_MAT.vest, 0,-0.40,-0.106);       // knee pad
     const knee = new THREE.Group(); knee.position.set(0,-0.46,0); hip.add(knee);
-    part(knee, EB(0.165,0.44,0.185), E_MAT.cloth, 0,-0.22,0);
-    part(knee, B(0.172,0.17,0.195), E_MAT.boot, 0,-0.38,-0.004);       // boot upper
-    part(knee, B(0.175,0.10,0.28), E_MAT.boot, 0,-0.42,-0.035);        // toe
+    part(knee, EB(0.165,0.44,0.185), M.leg, 0,-0.22,0);
+    part(knee, B(0.172,0.17,0.195), M.boot, 0,-0.38,-0.004);           // boot upper
+    part(knee, B(0.175,0.10,0.28), M.boot, 0,-0.42,-0.035);            // toe
     legs.push({hip,knee});
   }
   /* torso: soft body under a hard plate carrier, so the armour reads as a
      separate slab rather than a colour change.
-     -Z is the front, matching the head, the rifle, and the yaw the AI steers to. */
-  capsuleGroup(body, 0.215, 0.44, E_MAT.cloth, 0, 1.20, 0);
-  part(body, B(0.455,0.50,0.315), E_MAT.vest, 0, 1.25, -0.005);       // carrier
-  part(body, B(0.30,0.20,0.075), E_MAT.vest, 0, 1.30, -0.175);        // front plate
-  part(body, B(0.115,0.115,0.075), E_MAT.webb, 0.135, 1.13, -0.175);  // mag pouches
-  part(body, B(0.115,0.115,0.075), E_MAT.webb, 0.0,   1.13, -0.178);
-  part(body, B(0.115,0.115,0.075), E_MAT.webb,-0.135, 1.13, -0.175);
-  part(body, B(0.20,0.075,0.06),   E_MAT.webb, 0,     1.44, -0.168);  // radio on chest
-  part(body, B(0.075,0.020,0.020), E_MAT.accent, 0, 1.40, -0.196);    // IFF strobe
-  part(body, B(0.485,0.115,0.30),  E_MAT.vest, 0, 1.48, -0.005);      // shoulder yoke
-  part(body, B(0.40,0.10,0.32),    E_MAT.webb, 0, 1.06, -0.005);      // belt kit
-  part(body, B(0.11,0.15,0.09),    E_MAT.webb, 0.20, 1.02, -0.06);    // hip pouches
-  part(body, B(0.11,0.15,0.09),    E_MAT.webb,-0.20, 1.02, -0.06);
-  part(body, B(0.30,0.30,0.16),    E_MAT.webb, 0, 1.34, 0.21);        // daypack
-  part(body, B(0.11,0.24,0.10),    E_MAT.vest, 0.13, 1.36, 0.30);     // roll on pack
-  /* neck + head */
-  part(body, CYL(0.062,0.062,0.10,8), E_MAT.skin, 0, 1.53, 0);
+     -Z is the front, matching the head, the rifle, and the yaw the AI steers to.
+     自定义外观时躯干包进 torsoGrp：体型 (app.torso) 靠缩放实现，颜色靠
+     独立材质，改起来不用重建整具模型。 */
+  const torsoGrp = new THREE.Group(); body.add(torsoGrp);
+  if (app){
+    const t = clamp(parseFloat(app.torso) || 1.0, 0.85, 1.30);
+    torsoGrp.scale.set(t, 1 + (t-1)*0.5, t);
+  }
+  capsuleGroup(torsoGrp, 0.215, 0.44, M.torso, 0, 1.20, 0);
+  part(torsoGrp, B(0.455,0.50,0.315), M.torso, 0, 1.25, -0.005);      // carrier
+  part(torsoGrp, B(0.30,0.20,0.075), M.torso, 0, 1.30, -0.175);       // front plate
+  part(torsoGrp, B(0.115,0.115,0.075), E_MAT.webb, 0.135, 1.13, -0.175);  // mag pouches
+  part(torsoGrp, B(0.115,0.115,0.075), E_MAT.webb, 0.0,   1.13, -0.178);
+  part(torsoGrp, B(0.115,0.115,0.075), E_MAT.webb,-0.135, 1.13, -0.175);
+  part(torsoGrp, B(0.20,0.075,0.06),   E_MAT.webb, 0,     1.44, -0.168);  // radio on chest
+  part(torsoGrp, B(0.075,0.020,0.020), E_MAT.accent, 0, 1.40, -0.196);    // IFF strobe
+  part(torsoGrp, B(0.485,0.115,0.30),  M.torso, 0, 1.48, -0.005);     // shoulder yoke
+  part(torsoGrp, B(0.40,0.10,0.32),    E_MAT.webb, 0, 1.06, -0.005);  // belt kit
+  part(torsoGrp, B(0.11,0.15,0.09),    E_MAT.webb, 0.20, 1.02, -0.06);    // hip pouches
+  part(torsoGrp, B(0.11,0.15,0.09),    E_MAT.webb,-0.20, 1.02, -0.06);
+  part(torsoGrp, B(0.30,0.30,0.16),    E_MAT.webb, 0, 1.34, 0.21);    // daypack
+  part(torsoGrp, B(0.11,0.24,0.10),    E_MAT.vest, 0.13, 1.36, 0.30); // roll on pack
+  /* neck + head —— 自定义外观：露脸 + 发型，不戴头盔风镜 */
+  part(body, CYL(0.062,0.062,0.10,8), M.skin, 0, 1.53, 0);
   const head = new THREE.Group(); head.position.set(0,1.655,0); body.add(head);
-  part(head, new THREE.SphereGeometry(0.135,14,12), E_MAT.skin, 0,0,0);
-  part(head, new THREE.SphereGeometry(0.158,14,10,0,PI*2,0,PI*0.64), E_MAT.helm, 0,0.012,0);
-  part(head, B(0.30,0.035,0.30),  E_MAT.helm, 0,-0.048,0.004);        // helmet rim
-  part(head, B(0.055,0.10,0.05),  E_MAT.vest, 0.145,-0.035,0.01);     // ear cups
-  part(head, B(0.055,0.10,0.05),  E_MAT.vest,-0.145,-0.035,0.01);
-  part(head, B(0.20,0.055,0.06),  E_MAT.glass, 0,0.010,-0.115);       // goggles
-  part(head, B(0.21,0.022,0.05),  E_MAT.vest, 0,0.048,-0.108);        // goggle strap
-  part(head, B(0.13,0.075,0.06),  E_MAT.vest, 0,-0.062,-0.105);       // mask
-  part(head, B(0.026,0.026,0.10), E_MAT.helm, 0.10,0.055,-0.02);      // nvg mount
-  part(head, B(0.055,0.045,0.045),E_MAT.helm, 0,0.075,-0.10);         // nvg shroud
+  if (app){
+    const hs = (app.head|0) === 1 ? 1 : ((app.head|0) === 2 ? 2 : 0);
+    if (hs === 1){          // 方头
+      part(head, EB(0.21,0.24,0.20), M.skin, 0,0.01,0);
+    } else if (hs === 2){   // 宽头
+      part(head, new THREE.SphereGeometry(0.135,14,12), M.skin, 0,0,0, 0,0,0, 1.28,1,1.12);
+    } else {                // 圆头
+      part(head, new THREE.SphereGeometry(0.135,14,12), M.skin, 0,0,0);
+    }
+    const hairI = app.hair|0;
+    if (hairI === 1){       // 短发：顶盖 + 后脑勺
+      part(head, B(0.245,0.055,0.235), M.hair, 0,0.115,0.01);
+      part(head, B(0.225,0.10,0.045), M.hair, 0,0.03,0.105);
+    } else if (hairI === 2){// 寸头：贴头皮的薄壳
+      part(head, new THREE.SphereGeometry(0.142,14,10,0,PI*2,0,PI*0.52), M.hair, 0,0.004,0);
+    } else if (hairI === 3){// 蓬松：大一号的球
+      part(head, new THREE.SphereGeometry(0.158,14,12), M.hair, 0,0.028,0);
+    } else if (hairI === 4){// 马尾：顶壳 + 后束
+      part(head, new THREE.SphereGeometry(0.144,14,10,0,PI*2,0,PI*0.55), M.hair, 0,0.006,0);
+      part(head, B(0.07,0.20,0.07), M.hair, 0,0.02,0.145, 0.5,0,0);
+    }
+  } else {
+    part(head, new THREE.SphereGeometry(0.135,14,12), M.skin, 0,0,0);
+    part(head, new THREE.SphereGeometry(0.158,14,10,0,PI*2,0,PI*0.64), E_MAT.helm, 0,0.012,0);
+    part(head, B(0.30,0.035,0.30),  E_MAT.helm, 0,-0.048,0.004);        // helmet rim
+    part(head, B(0.055,0.10,0.05),  E_MAT.vest, 0.145,-0.035,0.01);     // ear cups
+    part(head, B(0.055,0.10,0.05),  E_MAT.vest,-0.145,-0.035,0.01);
+    part(head, B(0.20,0.055,0.06),  E_MAT.glass, 0,0.010,-0.115);       // goggles
+    part(head, B(0.21,0.022,0.05),  E_MAT.vest, 0,0.048,-0.108);        // goggle strap
+    part(head, B(0.13,0.075,0.06),  E_MAT.vest, 0,-0.062,-0.105);       // mask
+    part(head, B(0.026,0.026,0.10), E_MAT.helm, 0.10,0.055,-0.02);      // nvg mount
+    part(head, B(0.055,0.045,0.045),E_MAT.helm, 0,0.075,-0.10);         // nvg shroud
+  }
   /* arms — rifle rig */
   const rig = new THREE.Group(); rig.position.set(0,1.40,0); body.add(rig);
   const arms = [];
   for (const s of [-1,1]){
     const sh = new THREE.Group(); sh.position.set(s*0.275, 0.02, 0); rig.add(sh);
     part(sh, B(0.150,0.135,0.165), E_MAT.vest, 0,-0.035,0);           // shoulder pad
-    part(sh, EB(0.135,0.34,0.145), E_MAT.cloth, 0,-0.17,0);
+    part(sh, EB(0.135,0.34,0.145), M.cloth, 0,-0.17,0);
     part(sh, B(0.140,0.075,0.150), E_MAT.vest, 0,-0.30,0);            // elbow pad
     const el = new THREE.Group(); el.position.set(0,-0.34,0); sh.add(el);
-    part(el, EB(0.115,0.30,0.125), E_MAT.cloth, 0,-0.15,0);
-    part(el, B(0.10,0.10,0.13),   E_MAT.boot, 0,-0.30,0.01);          // glove
+    part(el, EB(0.115,0.30,0.125), M.cloth, 0,-0.15,0);
+    part(el, B(0.10,0.10,0.13),   M.boot, 0,-0.30,0.01);              // glove
     arms.push({sh,el});
   }
   /* enemy weapon */
@@ -6385,8 +6590,8 @@ function buildEnemyModel(){
   return { model, body, legs, arms, rig, gun, gunMuzzle, head, hbHead, hbBody, hbLegs, varGrp };
 }
 
-/* name tag + health bar sprite */
-function makeTag(name){
+/* name tag + health bar sprite。cyan=true 时名字用青色（队友），敌兵保持白/红 */
+function makeTag(name, cyan){
   const c = document.createElement('canvas'); c.width=256; c.height=76;
   const t = new THREE.CanvasTexture(c);
   t.encoding = THREE.sRGBEncoding;
@@ -6403,7 +6608,7 @@ function makeTag(name){
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.lineWidth = 5; ctx.strokeStyle='rgba(0,0,0,.85)';
     ctx.strokeText(label,128,22);
-    ctx.fillStyle = alerted ? '#ff6a58' : '#e9eef3';
+    ctx.fillStyle = alerted ? '#ff6a58' : (cyan ? '#7fe0ff' : '#e9eef3');
     ctx.fillText(label,128,22);
     const bx=40,bw=176,by=44,bh=13;
     ctx.fillStyle='rgba(0,0,0,.72)'; ctx.fillRect(bx-2,by-2,bw+4,bh+4);
@@ -6670,7 +6875,7 @@ const player = {
 };
 const G = {
   running:false, over:false, paused:false, started:false,
-  time:420, kills:0, headshots:0, shots:0, hits:0, elapsed:0,
+  time:420, kills:0, headshots:0, shots:0, hits:0, elapsed:0, deaths:0,
   dmgFlash:0, lowPulse:0, hbTimer:0, killFlash:0,
   grace:GRACE_TIME,         // hostiles hold fire while you get your bearings
   /* 'mission' | 'survival' | 'pvp' —— 死斗仍由 NET.pvp 驱动，这里只做分流 */
@@ -6678,6 +6883,78 @@ const G = {
   wave:0, waveState:'idle', waveTimer:0, waveSize:0, waveCleared:0,
   bestWave:0, maxShooters:2
 };
+
+/* =========================================================================
+   玩家档案（本地持久化）
+   -------------------------------------------------------------------------
+   · name  联机时对外展示的名字（成员列表 / 头顶铭牌 / 小地图 / 聊天）
+   · app   外观：发型 hair 0-4、发色 hairC、头型 head 0-2、肤色 headC、
+           体型 torso 0.85-1.30、躯干色 torsoC、腿色 legC、靴色 bootC
+   · stats 本地累计的游戏数据：t 总时长(秒) k 击杀 d 死亡 hs 爆头
+           sh 开枪数 hit 命中数 g 对局数 w 胜场数
+   外观会随 hi / join / roster 消息同步给房间里的其他人，
+   队友模型按收到的外观重建，所有人的颜色、发型、体型各不相同。
+   ========================================================================= */
+const PROFILE_STORE = 'ih_profile_v1';
+const HAIR_STYLES  = ['无','短发','寸头','蓬松','马尾'];
+const HEAD_STYLES  = ['圆头','方头','宽头'];
+const HAIR_COLORS  = ['#2b2320','#4a342a','#8a5a2b','#c99b5f','#111318','#7a2420','#3f4a56','#e6e2d8'];
+const SKIN_COLORS  = ['#a87f5b','#c98d64','#8a6a4a','#6e523c','#d9a97e','#5c4632'];
+const CLOTH_COLORS = ['#32342f','#3f4a56','#5a4632','#703a2a','#2e3d33','#4b4b52','#6a1f1f','#2b2b30','#566046','#243b52'];
+const BOOT_COLORS  = ['#26262a','#4a3426','#1f2b36','#3a2420','#54503f','#141416'];
+
+function defaultProfile(){
+  return {
+    name: '新兵' + String((Math.random()*90+10)|0),
+    app: {
+      hair:1, hairC:HAIR_COLORS[0], head:0, headC:SKIN_COLORS[0],
+      torso:1.0, torsoC:CLOTH_COLORS[0], legC:CLOTH_COLORS[1], bootC:BOOT_COLORS[0]
+    },
+    stats: { t:0, k:0, d:0, hs:0, sh:0, hit:0, g:0, w:0 }
+  };
+}
+let PROFILE = defaultProfile();
+try { Object.assign(PROFILE, JSON.parse(localStorage.getItem(PROFILE_STORE) || '{}')); } catch(_){}
+PROFILE.app   = Object.assign(defaultProfile().app,   PROFILE.app   || {});
+PROFILE.stats = Object.assign(defaultProfile().stats, PROFILE.stats || {});
+function saveProfile(){ try { localStorage.setItem(PROFILE_STORE, JSON.stringify(PROFILE)); } catch(_){} }
+function profKd(){ return PROFILE.stats.d > 0 ? (PROFILE.stats.k / PROFILE.stats.d) : PROFILE.stats.k; }
+function profFmtTime(s){
+  s = Math.max(0, s|0);
+  const h = (s/3600)|0, m = ((s%3600)/60)|0;
+  return h > 0 ? (h + ' 小时 ' + m + ' 分') : (m > 0 ? (m + ' 分 ' + (s%60) + ' 秒') : (s + ' 秒'));
+}
+/* 对局数据回写档案：delta 累计，避免重复统计。每 5 秒存一次盘，打一半退
+   游戏也不丢太多。PR.base 记录「上次结账时的对局计数」。 */
+const PR = { base:null, lastSave:0 };
+function profBeginRound(){
+  PR.base = { t:G.elapsed, k:G.kills, d:G.deaths, hs:G.headshots, sh:G.shots, hit:G.hits };
+  PR.lastSave = performance.now();
+}
+function profAccum(){
+  if (!PR.base) return;
+  const s = PROFILE.stats;
+  s.t   += Math.max(0, G.elapsed - PR.base.t);
+  s.k   += Math.max(0, G.kills      - PR.base.k);
+  s.d   += Math.max(0, G.deaths     - PR.base.d);
+  s.hs  += Math.max(0, G.headshots  - PR.base.hs);
+  s.sh  += Math.max(0, G.shots      - PR.base.sh);
+  s.hit += Math.max(0, G.hits       - PR.base.hit);
+  PR.base = { t:G.elapsed, k:G.kills, d:G.deaths, hs:G.headshots, sh:G.shots, hit:G.hits };
+  saveProfile();
+}
+function profEndRound(win){
+  if (!PR.base) return;
+  PROFILE.stats.g++;
+  if (win) PROFILE.stats.w++;
+  profAccum();
+}
+function profTick(now){
+  if (!G.running || G.over || !PR.base) return;
+  if (now - PR.lastSave < 5000) return;
+  PR.lastSave = now;
+  profAccum();
+}
 
 /* =========================================================================
    11.5 设置 / 背包 / 投掷物 / 滑铲 / 陀螺仪
@@ -7475,6 +7752,7 @@ function drawMinimap(){
     }
   }
   /* teammates: a cyan wedge + a health pip, clearly not the red enemy dot */
+  const mmLabels = [];   // restore 后再画名字：跟随旋转会歪，正立的字才看得清
   if (isCoop()){
     for (const tm of NET.remotes){
       if (!tm.on || tm.dead) continue;
@@ -7493,6 +7771,7 @@ function drawMinimap(){
       ctx.fillStyle='rgba(6,20,26,.75)'; ctx.fillRect(r.x-2.2, r.z+2.6, 4.4, 0.7);
       ctx.fillStyle = k>0.5 ? 'rgba(90,235,180,.95)' : (k>0.25 ? 'rgba(255,200,90,.95)' : 'rgba(255,90,80,.95)');
       ctx.fillRect(r.x-2.1, r.z+2.7, 4.2*k, 0.5);
+      mmLabels.push({ tm, r });
     }
   }
   ctx.restore();
@@ -7505,6 +7784,25 @@ function drawMinimap(){
   ctx.beginPath(); ctx.moveTo(cx,cy-6); ctx.lineTo(cx+4.6,cy+5); ctx.lineTo(cx,cy+2.6); ctx.lineTo(cx-4.6,cy+5);
   ctx.closePath(); ctx.fill();
   ctx.restore();
+
+  /* 队友名字：三角标上方一行小字（世界 → 屏幕坐标手工换算，
+     与上面 save/rotate/scale/translate 的合成顺序保持一致） */
+  {
+    const ca = Math.cos(player.yaw), sa = Math.sin(player.yaw);
+    ctx.font = 'bold 8px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    for (const it of mmLabels){
+      const dx = it.r.x - player.pos.x, dz = it.r.z - player.pos.z;
+      const sx = cx + (dx*ca - dz*sa)*scale;
+      const sy = cy + (dx*sa + dz*ca)*scale;
+      if (sx < 12 || sx > S-12 || sy < 16 || sy > S-4) continue;
+      const nm = (it.tm.name || '队友').slice(0, 8);
+      ctx.lineWidth = 2.4; ctx.strokeStyle = 'rgba(4,10,14,.85)';
+      ctx.strokeText(nm, sx, sy - 5);
+      ctx.fillStyle = 'rgba(130,235,255,.96)';
+      ctx.fillText(nm, sx, sy - 5);
+    }
+  }
 
   ctx.strokeStyle='rgba(223,230,236,.20)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.arc(cx,cy,cx-2,0,7); ctx.stroke();
@@ -7907,6 +8205,25 @@ function mmapDraw(){
   }
   ctx.restore();   /* 世界变换到此结束，后面全是屏幕坐标 */
 
+  /* 队友名字：全域地图里也跟随三角标，正立文字，超出视口就不画 */
+  if (isCoop()){
+    ctx.font = 'bold 10px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    for (const tm of NET.remotes){
+      if (!tm.on || tm.dead) continue;
+      const r = tm.pos;
+      const dx = r.x - MMAP.cx, dz = r.z - MMAP.cz;
+      const sx = W / 2 + (dx * ca - dz * sa) * s;
+      const sy = H / 2 + (dx * sa + dz * ca) * s;
+      if (sx < 20 || sx > W - 20 || sy < 20 || sy > H - 8) continue;
+      const nm = (tm.name || '队友').slice(0, 10);
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(4,10,14,.85)';
+      ctx.strokeText(nm, sx, sy - 7);
+      ctx.fillStyle = 'rgba(130,235,255,.96)';
+      ctx.fillText(nm, sx, sy - 7);
+    }
+  }
+
   /* ---- 距离刻度 ----
      挂在「最近那条地图边界」上：左边界贴着竖排数字，上边界横着写，
      边界被拖出画面时退回到屏幕边缘，于是任何缩放/平移下都有一把尺子。
@@ -8126,6 +8443,17 @@ let sensScale = 1;              // shrinks with ADS zoom so aim stays 1:1 on scr
 
 addEventListener('keydown', e=>{
   if (e.repeat) { if(['Space','KeyR','Digit1','Digit2','Digit3','Digit4','KeyV','KeyG','Tab'].includes(e.code)) e.preventDefault(); return; }
+  /* 聊天框开着时按键只服务输入框：Enter 由输入框自己的 keydown 发送 */
+  if (CHAT.open){
+    if (e.code==='Escape'){ e.preventDefault(); chatClose(); }
+    else if (e.code==='Enter'){ e.preventDefault(); chatSend(); }
+    else if (e.code==='KeyT'){ e.preventDefault(); }
+    return;
+  }
+  /* T 打开聊天（仅联机对局中） */
+  if (e.code==='KeyT' && NET.open && G.started && !G.over && !shopOpen && !bagOpen && !MMAP.open){
+    e.preventDefault(); chatOpen(); return;
+  }
   /* 补给面板是实时覆盖层：它打开时按键只负责关面板，不再驱动角色 */
   if (shopOpen){
     if (e.code==='KeyB' || e.code==='Escape'){ e.preventDefault(); closeShop(); }
@@ -8306,6 +8634,7 @@ document.addEventListener('pointerlockchange', ()=>{
   const locked = document.pointerLockElement === document.body;
   if (!locked){
     if (shopOpen) return;                     // 开商店主动放的锁，不算暂停
+    if (CHAT.open) return;                    // 聊天框主动交还锁去打字，不算暂停
     if (MMAP.open || MMAP.releasingLock){ MMAP.releasingLock = false; return; }   // 打开全屏地图时主动交还的锁，也不算暂停
     pauseGame();
   } else if (shopOpen){
@@ -8405,6 +8734,10 @@ $('mmSingle').addEventListener('click', e=>{
 $('mmMulti').addEventListener('click', e=>{
   e.stopPropagation(); SFX.init();
   mpOpenChoose();
+});
+$('mmProfile').addEventListener('click', e=>{
+  e.stopPropagation(); SFX.init();
+  profOpen();
 });
 $('mmSettings').addEventListener('click', e=>{
   e.stopPropagation(); SFX.init();
@@ -9079,6 +9412,7 @@ function damagePlayer(amount, fromPos){
       pvpDown();
     } else {
       player.dead=true;
+      G.deaths++;
       setADS(false);
       updateVitalsUI();
       endGame(false);
@@ -9108,10 +9442,10 @@ function damageTarget(t, amount, fromPos){
       t.down = 20; t.downT = 20;
       netSendTo(seat, { t:'down', side:'guest' });
       netSend({ t:'pdown', i:seat });       // 其他客机眼里也要看到他倒下
-      if (NET.host) pushComms('指挥', (t.name || '支援兵') + '倒下了，去拉他一把');
+      if (NET.host) pushComms('指挥', (t.name || '队友') + '倒下了，去拉他一把');
     } else if (NET.pvp){
       G.pvpKills++;
-      killFeed(t.name || '支援兵', false, '你');
+      killFeed(t.name || '队友', false, '你');
       netSendTo(seat, { t:'died' });
       netSend({ t:'score', a:G.pvpKills, b:NET.remoteKills });
       updatePvpScore();
@@ -11151,7 +11485,7 @@ function resetWorldState(){
   UI.feed.innerHTML='';
 
   G.time = mode === 'pvp' ? 300 : (mode === 'survival' ? 0 : (MAP_OBJ.time||420));
-  G.kills=0; G.headshots=0; G.shots=0; G.hits=0; G.elapsed=0;
+  G.kills=0; G.headshots=0; G.shots=0; G.hits=0; G.elapsed=0; G.deaths=0;
   if (mode === 'pvp'){
     G.pvpKills = 0; NET.remoteKills = 0; NET.respawnT = 0;
     const sp = NET.guest ? nearestFree(0, -24, 0.5, 1.7, 14) : [SPAWN.x, SPAWN.z];
@@ -11238,6 +11572,7 @@ function startGame(fromNet, mode){
   UI.hud.classList.add('on');
   G.started=true; G.running=true; G.over=false;
   G.maxShooters = 2;
+  profBeginRound();     // 生涯数据开始记账
   NET.ended=false; NET.dismissed=false;
   mpUpdateRoster();     // 进战场点亮「在线 N/5」角标
   $('money').classList.toggle('hide', !!NET.pvp);   // 死斗没有补给
@@ -11269,6 +11604,8 @@ function restart(){
 /* 中途退房：不弹结算，直接回主菜单 */
 function abortRound(){
   G.running = false; G.started = false; G.over = true;
+  profAccum();              // 中途退房也把已经打出来的数据记上
+  chatClose(); chatUpdateVis();
   document.body.classList.remove('ingame');
   UI.hud.classList.remove('on');
   UI.pause.classList.remove('on');
@@ -11290,6 +11627,8 @@ function endGame(win){
   if (NET.pvp) win = G.pvpKills > NET.remoteKills;
   G.over=true; G.running=false; G.started=false;
   NET.ended=true;
+  profEndRound(win);        // 生涯数据落账（时长/击杀/死亡/胜场）
+  chatClose(); chatUpdateVis();
   if (NET.host && NET.open) netSend({ t:'end', w:win?1:0, d:player.dead?1:0 });
   hideNetBanner();
   /* 结算后敌人不再 tick，updateBossBar 也不会再跑：手边收起血条，
@@ -11385,7 +11724,7 @@ const NET = {
   mode:'coop', pvp:false, pvpKills:0, remoteKills:0, respawnT:0
 };
 function mkRemote(){
-  return { on:false, name:'支援兵', pos:new THREE.Vector3(0,0,0), yaw:0, pitch:0,
+  return { on:false, name:'队友', app:null, pos:new THREE.Vector3(0,0,0), yaw:0, pitch:0,
            hp:100, armor:50, armorLv:0, maxHp:100, dead:false, down:0, downT:0,
            vel:new THREE.Vector3(0,0,0), height:1.72, crouch:false, speed:0, afk:false };
 }
@@ -11459,6 +11798,112 @@ function netSendTo(seat, msg){
     if (c && c.seat === seat && c.conn && netCanSend(c.conn)){ try { c.conn.send(msg); } catch(_){} return; }
   }
 }
+/* 房主广播但跳过一个座位：聊天里用来把消息转给除发送者外的所有人，
+   不然发消息的人会收到自己那条再显示一遍 */
+function netSendExcept(seat, msg){
+  if (!NET.host) return;
+  for (const k in NET.conns){
+    const c = NET.conns[k];
+    if (c && c.seat !== seat && c.conn && netCanSend(c.conn)){ try { c.conn.send(msg); } catch(_){} }
+  }
+}
+
+/* =========================================================================
+   房间聊天
+   -------------------------------------------------------------------------
+   · 消息流：房主是星型中心。客机发 {t:'chat', m} 给房主；房主显示后带上
+     发送者名字转发给其他客机。房主自己发则直接广播 {t:'chat', i:0, n, m}。
+     发送者永远收不到自己那条（netSendExcept 跳过），本地只显示一次。
+   · 历史：CHAT.LOG 保存在内存里，进房间清空，打开聊天框看得到全部历史。
+   · 聊天框外，新消息以 toast 形式出现在屏幕右侧中部，4.5 秒后淡出。
+   ========================================================================= */
+const CHAT = { LOG:[], open:false, MAX:150 };
+function chatUpdateVis(){
+  const btn = $('chatBtn');
+  if (!btn) return;
+  const show = !!NET.open && G.started && !G.over && !CHAT.open;
+  btn.classList.toggle('show', show);
+}
+function chatAdd(name, text, own){
+  name = String(name || '队友').slice(0, 16);
+  text = String(text || '').slice(0, 80);
+  if (!text) return;
+  CHAT.LOG.push({ n:name, m:text, own:!!own, t:Date.now() });
+  while (CHAT.LOG.length > CHAT.MAX) CHAT.LOG.shift();
+  const log = $('chatLog');
+  if (log && CHAT.open){
+    const el = document.createElement('div');
+    el.className = 'cm-msg' + (own ? ' own' : '');
+    const b = document.createElement('b'); b.textContent = name;
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + text));
+    log.appendChild(el);
+    while (log.children.length > CHAT.MAX) log.firstChild.remove();
+    log.scrollTop = log.scrollHeight;
+  }
+  /* toast：聊天框外也要一眼看到（屏幕右侧中部） */
+  const wrap = $('chatToast');
+  if (wrap){
+    const el = document.createElement('div');
+    el.className = 'cto' + (own ? ' own' : '');
+    const b = document.createElement('b'); b.textContent = name;
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + text));
+    wrap.appendChild(el);
+    while (wrap.children.length > 5) wrap.firstChild.remove();
+    setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 400); }, 4500);
+  }
+}
+function chatRenderLog(){
+  const log = $('chatLog');
+  if (!log) return;
+  log.innerHTML = '';
+  for (const it of CHAT.LOG){
+    const el = document.createElement('div');
+    el.className = 'cm-msg' + (it.own ? ' own' : '');
+    const b = document.createElement('b'); b.textContent = it.n;
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + it.m));
+    log.appendChild(el);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+function chatOpen(){
+  if (!NET.open || CHAT.open) return;
+  CHAT.open = true;
+  $('chatRoom').textContent = NET.code ? ('房间 ' + NET.code) : '房间频道';
+  $('chatBox').classList.remove('hide');
+  $('chatBtn').classList.remove('show');
+  chatRenderLog();
+  if (document.pointerLockElement) document.exitPointerLock();
+  const inp = $('chatInput');
+  setTimeout(()=>{ try { inp.focus({preventScroll:true}); } catch(_){ inp.focus(); } }, 60);
+}
+function chatClose(){
+  if (!CHAT.open) return;
+  CHAT.open = false;
+  $('chatBox').classList.add('hide');
+  $('chatInput').blur();
+  for (const k in keys) keys[k] = false;   // 打字时按住的键不能带进战场
+  chatUpdateVis();
+  /* 键盘关框（Esc/Enter）不算用户手势里的点击，锁不一定批得下来；
+     交给下一帧再试，锁不上也有自由视角兜底，不会把世界冻住。 */
+  if (!IS_TOUCH && G.started && !G.over) requestAnimationFrame(()=>{
+    if (!CHAT.open && !shopOpen && !MMAP.open && !document.pointerLockElement) requestLock();
+  });
+}
+function chatSend(){
+  const inp = $('chatInput');
+  const text = (inp.value || '').trim();
+  if (!text){ chatClose(); return; }
+  inp.value = '';
+  /* 自己这句本地一定要看得见，不能因为连接状态字段暂时缺失就整条丢掉 */
+  chatAdd(PROFILE.name, text, true);
+  if (NET.host)       netSend({ t:'chat', i:0, n:PROFILE.name, m:text });
+  else if (NET.guest) netSend({ t:'chat', m:text });
+  if (IS_TOUCH) chatClose();
+  else { try { inp.focus({preventScroll:true}); } catch(_){ inp.focus(); } }
+}
 function mpState(text, on){
   const el = $('mpState');
   if (!el) return;
@@ -11500,22 +11945,23 @@ function mpUpdateRoster(){
     list.appendChild(d);
   };
   if (NET.host){
-    add('指挥官（房主）', true, '房主');
+    add(PROFILE.name + '（房主）', true, '房主');
     /* 只列已经连进来的人：没人来的座位不再占一整行“等待中” */
     for (let s=1; s<=4; s++){
       const e = connOfSeat(s);
       if (!e) continue;
-      add(e.name || ('支援兵 ' + s), true, '已连接');
+      add(e.name || ('队友 ' + s), true, '已连接');
     }
   } else {
-    add('指挥官（房主）', NET.open, NET.open ? '已连接' : '连接中');
+    const hostName = (NET.remotes[0] && NET.remotes[0].name) || '指挥官';
+    add(hostName + '（房主）', NET.open, NET.open ? '已连接' : '连接中');
     /* 其余客机：靠 join / left 消息维护的 remotes 表，按座位顺序列 */
     for (let s=1; s<=4; s++){
       if (s === NET.seat) continue;
       const r = remoteOfSeat(s);
-      if (r && r.on) add(r.name || '支援兵 ' + s, true, '已连接');
+      if (r && r.on) add(r.name || ('队友 ' + s), true, '已连接');
     }
-    add('支援兵（你）', true, NET.seat > 0 ? '座位 ' + NET.seat : '已入座');
+    add(PROFILE.name + '（你）', true, NET.seat > 0 ? '座位 ' + NET.seat : '已入座');
   }
   const c = $('mpCount');
   if (c){
@@ -11544,6 +11990,8 @@ function mpUpdateRoster(){
     chip.textContent = '在线 ' + n + '/5';
     chip.classList.toggle('on', !!NET.open && !!G.started);
   }
+  /* 聊天入口只在联机对局中出现，单机没有收件人 */
+  chatUpdateVis();
 }
 function mpUpdateStartBtn(){
   const b = $('mpStart');
@@ -11737,13 +12185,15 @@ function mpBindConn(conn, asHost){
       /* 第一条消息就把座位和世界种子发给新人：他还没法处理任何快照 */
       netSendTo(seat, { t:'seat', i:seat, seed:SEED, map:MAP.id, live:G.running,
                         time:G.time, kills:G.kills, mode:NET.mode });
-      /* 花名册：把已经在场的人告诉新人 */
-      const list = [[0, '指挥官']];
+      /* 花名册：把已经在场的人（名字 + 档案外观）告诉新人 */
+      const list = [[0, PROFILE.name, PROFILE.app]];
       for (const k in NET.conns){
         const c = NET.conns[k];
-        if (c !== entry && c.name) list.push([c.seat, c.name]);
+        if (c !== entry && c.name) list.push([c.seat, c.name, (remoteOfSeat(c.seat)||{}).app || null]);
       }
       netSendTo(seat, { t:'roster', list });
+      /* 半路进房也能翻到这个房间此前聊过的全部内容 */
+      if (CHAT.LOG.length) netSendTo(seat, { t:'chathist', list: CHAT.LOG });
       mpUpdateRoster();
       mpUpdateStartBtn();
     });
@@ -11971,6 +12421,10 @@ function mpLeave(notify){
   }, notify ? 350 : 0);
   NET.open = false; NET.host = false; NET.guest = false; NET.seat = 0; NET.full = false; NET.fullPvp = false;
   NET.code = '';
+  /* 聊天是房间维度的：退房即清空历史与未读 toast */
+  CHAT.LOG.length = 0;
+  chatClose();
+  { const tw = $('chatToast'); if (tw) tw.innerHTML = ''; }
   for (let i=0;i<4;i++){
     const r = NET.remotes[i];
     r.on = false; r.dead = false; r.down = 0; r.downT = 0; r.afk = false;
@@ -11995,12 +12449,13 @@ function onNetData(m, seat){
     if (m.t === 'hi'){
       const r = remoteOfSeat(seat);
       if (!r) return;
-      r.name = m.n || '支援兵';
+      r.name = m.n || '队友';
+      r.app = m.ap || null;          // 档案外观：重建模型时用本人选的颜色
       r.on = true;
       const e = connOfSeat(seat);
       if (e) e.name = r.name;
-      spawnAvatarAt(seat-1, r.name);
-      netSend({ t:'join', i:seat, n:r.name });      // 其他客机补上他的模型
+      spawnAvatarAt(seat-1, r.name, r.app);
+      netSend({ t:'join', i:seat, n:r.name, ap:r.app });   // 其他客机补上他的模型
       mpUpdateRoster();
       mpUpdateStartBtn();
       if (G.running && !G.over){
@@ -12009,6 +12464,18 @@ function onNetData(m, seat){
         mpState('队友已加入', true);
         $('mpHostNote').textContent = '队友已连接，点击下方开始任务（队友会同时进入战场）';
       }
+    } else if (m.t === 'prof'){
+      /* 客机在档案里改了名字/外观：房主更新自己这边的记录与模型，
+         再用 join 转发给其余客机（客机侧已有 join 处理，不必另造协议）。 */
+      const r = remoteOfSeat(seat);
+      if (!r) return;
+      r.name = m.n || r.name;
+      r.app  = m.ap || null;
+      const e = connOfSeat(seat);
+      if (e) e.name = r.name;
+      spawnAvatarAt(seat-1, r.name, r.app);
+      netSendExcept(seat, { t:'prof', i:seat, n:r.name, ap:r.app });
+      mpUpdateRoster();
     } else if (m.t === 'me'){
       applyGuestState(m, seat);
     } else if (m.t === 'sh'){
@@ -12056,7 +12523,7 @@ function onNetData(m, seat){
         const r = remoteOfSeat(seat);
         if (r){ r.dead = true; r.down = 20; r.downT = 20; }
         netSend({ t:'pdown', i:seat });
-        pushComms('指挥', '支援兵倒下了，靠近按住 E 救援');
+        pushComms('指挥', (remoteOfSeat(seat)||{}).name ? (remoteOfSeat(seat).name + '倒下了') : '队友倒下了，靠近按住 E 救援');
       }
     } else if (m.t === 'score'){
       /* 客机在 1v1 里打死了房主，或自己算的比分：房主以前根本不接这条，
@@ -12065,6 +12532,12 @@ function onNetData(m, seat){
       NET.remoteKills = Math.max(NET.remoteKills | 0, m.a | 0);
       updatePvpScore();
       pvpCheckEnd();
+    } else if (m.t === 'chat'){
+      /* 队友发言：显示后转发给其他客机（跳过发送者，避免他看到两条） */
+      const r = remoteOfSeat(seat);
+      const nm = (r && r.name) || '队友';
+      chatAdd(nm, m.m, false);
+      netSendExcept(seat, { t:'chat', i:seat, n:nm, m:m.m });
     } else if (m.t === 'bye'){
       const e = connOfSeat(seat);
       if (e) mpOnConnClose(Object.keys(NET.conns).find(k=>NET.conns[k]===e));
@@ -12079,24 +12552,39 @@ function onNetData(m, seat){
       setNetMode(m.mode || 'coop');
       /* 房主的地图就是这一局的战场：客机必须先换到同一张图，坐标才对得上 */
       if (m.map && m.map !== MAP.id) NET.pendingMap = m.map;
-      netSend({ t:'hi', n:'支援兵' });
+      netSend({ t:'hi', n:PROFILE.name, ap:PROFILE.app });
       mpUpdateRoster();          // 拿到座位号后才能列出“你自己在哪”
+    } else if (m.t === 'chathist'){
+      /* 房主补发的历史：按 名字+内容+时间戳 去重，重连时不会叠两遍。
+         历史里的 own 是房主视角，客机这边一律当作别人发的。 */
+      const seen = new Set(CHAT.LOG.map(it => it.n + '|' + it.m + '|' + it.t));
+      for (const it of (m.list || [])){
+        if (!it || typeof it.m !== 'string') continue;
+        const n = String(it.n || '队友').slice(0, 16);
+        const txt = String(it.m).slice(0, 80);
+        const key = n + '|' + txt + '|' + it.t;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        CHAT.LOG.push({ n, m:txt, own:false, t:it.t || Date.now() });
+      }
+      while (CHAT.LOG.length > CHAT.MAX) CHAT.LOG.shift();
+      if (CHAT.open) chatRenderLog();
     } else if (m.t === 'roster'){
       for (const it of (m.list || [])){
-        const s = it[0], n = it[1];
+        const s = it[0], n = it[1], ap = it[2];
         if (s === NET.seat) continue;
         const r = remoteOfSeat(s);
         if (!r) continue;
-        r.name = n; r.on = true;
-        spawnAvatarAt(NET.remotes.indexOf(r), n);
+        r.name = n; r.app = ap || null; r.on = true;
+        spawnAvatarAt(NET.remotes.indexOf(r), n, r.app);
       }
       mpUpdateRoster();
     } else if (m.t === 'join'){
       if (m.i === NET.seat) return;
       const r = remoteOfSeat(m.i);
       if (r){
-        r.name = m.n || '支援兵'; r.on = true;
-        spawnAvatarAt(NET.remotes.indexOf(r), r.name);
+        r.name = m.n || '队友'; r.app = m.ap || null; r.on = true;
+        spawnAvatarAt(NET.remotes.indexOf(r), r.name, r.app);
       }
       mpUpdateRoster();
     } else if (m.t === 'left'){
@@ -12112,8 +12600,8 @@ function onNetData(m, seat){
       $('mpJoinNote').textContent = fullRoomText();
     } else if (m.t === 'hi'){
       const r = NET.remotes[0];
-      r.name = m.n || '指挥官'; r.on = true;
-      spawnAvatarAt(0, r.name);
+      r.name = m.n || '指挥官'; r.app = m.ap || null; r.on = true;
+      spawnAvatarAt(0, r.name, r.app);
     } else if (m.t === 'afk'){
       /* 房主也会暂停（联机里暂停不冻结世界）：让队友知道他挂机了 */
       const r = NET.remotes[0];
@@ -12187,6 +12675,7 @@ function onNetData(m, seat){
       updatePvpScore();
     } else if (m.t === 'died'){
       player.dead = true; player.hp = 0;
+      G.deaths++;
       NET.respawnT = 3;
       setADS(false); releaseTouchHolds(); updateVitalsUI();
       showNetBanner('你被击倒', '3 秒后在出生点重生');
@@ -12230,6 +12719,18 @@ function onNetData(m, seat){
         sub:'房间已关闭，本局无法继续。点下方按钮返回主界面。',
         okText:'返回主界面', hideScreens:true, onOk:mpBackToMenu
       });
+    } else if (m.t === 'prof'){
+      /* 房主或另一位客机改了档案：i 是对方的座位号 */
+      const s = m.i | 0;
+      if (s === NET.seat) return;
+      const r = remoteOfSeat(s);
+      if (r){
+        r.name = m.n || r.name; r.app = m.ap || null; r.on = true;
+        spawnAvatarAt(NET.remotes.indexOf(r), r.name, r.app);
+      }
+      mpUpdateRoster();
+    } else if (m.t === 'chat'){
+      chatAdd(m.n || '队友', m.m, false);
     } else if (m.t === 'end'){
       if (!m.w && m.d) player.dead = true;      // 房主阵亡和队友阵亡是两种结算文案
       endGame(!!m.w);
@@ -12399,6 +12900,7 @@ function guestKillEnemy(e){
 function guestDied(){
   if (player.dead) return;
   player.dead = true; player.hp = 0;
+  G.deaths++;
   NET.spectate = true;
   releaseTouchHolds();
   updateVitalsUI();
@@ -12574,6 +13076,7 @@ function pvpCheckEnd(){
 function pvpDown(){
   if (player.dead) return;
   player.dead = true; player.hp = 0;
+  G.deaths++;
   NET.respawnT = 3;
   NET.remoteKills++;
   netSend({ t:'score', a:G.pvpKills, b:NET.remoteKills });
@@ -12828,18 +13331,22 @@ function setNetMode(mode){
    四个槽位对应 NET.remotes[0..3]（房主眼里是客机 1..4，客机眼里 0=房主、
    其余按座位排序）。旧代码只有一个 NET.avatar 单体，这里统一换成按槽位存取。 */
 const FRIEND_TINT = new THREE.Color(0x1f5f9e);
-function spawnAvatarAt(i, name){
+function spawnAvatarAt(i, name, app){
   if (i < 0 || i > 3) return null;
   removeAvatarAt(i);
-  const parts = buildEnemyModel();
-  parts.model.traverse(o=>{
-    if (!o.isMesh) return;
-    o.material = o.material.clone();
-    if (o.material.color) o.material.color.lerp(FRIEND_TINT, 0.55);
-  });
+  /* 带档案外观：buildEnemyModel 已经按外观生成独立材质，颜色是本人选的，
+     不再整体往蓝里染；铭牌用青色跟敌兵区分 */
+  const parts = buildEnemyModel(app || null);
+  if (!app){
+    parts.model.traverse(o=>{
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      if (o.material.color) o.material.color.lerp(FRIEND_TINT, 0.55);
+    });
+  }
   const g = new THREE.Group();
   g.add(parts.model);
-  const tag = makeTag(name || '支援兵');
+  const tag = makeTag(name || '队友', true);
   tag.sprite.visible = false;
   g.add(tag.sprite);
   scene.add(g);
@@ -12936,6 +13443,217 @@ function updateRemoteEnemies(dt){
 }
 
 /* ---------------- 面板事件 ---------------- */
+/* ---------------- 聊天 UI 事件 ---------------- */
+$('chatBtn').addEventListener('click', e=>{ e.stopPropagation(); SFX.init(); chatOpen(); });
+$('chatSend').addEventListener('click', e=>{ e.stopPropagation(); chatSend(); });
+$('chatInput').addEventListener('keydown', e=>{
+  e.stopPropagation();
+  if (e.code==='Enter'){ e.preventDefault(); chatSend(); }
+  else if (e.code==='Escape'){ e.preventDefault(); chatClose(); }
+});
+$('chatBox').addEventListener('pointerdown', e=>e.stopPropagation());
+$('chatToast').addEventListener('pointerdown', e=>e.stopPropagation());
+
+/* ---------------- 我的档案 ----------------
+   面板 + 3D 预览。预览用独立的小 WebGLRenderer 和独立场景，
+   不碰主渲染循环；面板打开时才转，改外观就重建模型。 */
+const profUI = { renderer:null, scene:null, cam:null, model:null, raf:0, phase:0 };
+function profSwatches(id, colors, key){
+  const box = $(id);
+  box.innerHTML = '';
+  for (const c of colors){
+    const b = document.createElement('button');
+    b.style.background = c;
+    b.setAttribute('aria-label', c);
+    if (PROFILE.app[key] === c) b.classList.add('act');
+    b.addEventListener('click', e=>{
+      e.stopPropagation();
+      PROFILE.app[key] = c;
+      saveProfile(); profRefreshUI(); profRebuildPreview();
+    });
+    box.appendChild(b);
+  }
+}
+function profChips(id, list, key, isNum){
+  const box = $(id);
+  box.innerHTML = '';
+  list.forEach((label, i)=>{
+    const b = document.createElement('button');
+    b.textContent = label;
+    const cur = isNum ? (PROFILE.app[key]|0) : PROFILE.app[key];
+    if (cur === i) b.classList.add('act');
+    b.addEventListener('click', e=>{
+      e.stopPropagation();
+      PROFILE.app[key] = i;
+      saveProfile(); profRefreshUI(); profRebuildPreview();
+    });
+    box.appendChild(b);
+  });
+}
+function profTorsoLabel(v){
+  v = parseFloat(v) || 1;
+  return v < 0.94 ? '纤细' : (v > 1.14 ? '壮硕' : '标准');
+}
+function profRefreshUI(){
+  profChips('profHair', HAIR_STYLES, 'hair', true);
+  profChips('profHead', HEAD_STYLES, 'head', true);
+  profSwatches('profHairC',  HAIR_COLORS,  'hairC');
+  profSwatches('profHeadC',  SKIN_COLORS,  'headC');
+  profSwatches('profTorsoC', CLOTH_COLORS, 'torsoC');
+  profSwatches('profLegC',   CLOTH_COLORS, 'legC');
+  profSwatches('profBootC',  BOOT_COLORS,  'bootC');
+  const sl = $('profTorso');
+  sl.value = clamp(parseFloat(PROFILE.app.torso) || 1, 0.85, 1.30);
+  $('profTorsoV').textContent = profTorsoLabel(sl.value);
+}
+function profRefreshStats(){
+  const s = PROFILE.stats;
+  const acc = s.sh > 0 ? Math.round(s.hit / s.sh * 100) : 0;
+  const rows = [
+    [profFmtTime(s.t), '总游戏时长'],
+    [s.k, '总击杀'],
+    [s.d, '总死亡'],
+    [(Math.round(profKd()*100)/100).toFixed(2), '战损比 K/D'],
+    [s.hs, '爆头总数'],
+    [acc + '%', '命中率'],
+    [s.g, '对局数'],
+    [s.g > 0 ? Math.round(s.w/s.g*100) + '%' : '—', '胜率']
+  ];
+  const box = $('profStats');
+  box.innerHTML = '';
+  for (const [v, k] of rows){
+    const d = document.createElement('div');
+    d.className = 'pst';
+    d.innerHTML = '<div class="v"></div><div class="k"></div>';
+    d.firstChild.textContent = String(v);
+    d.lastChild.textContent = k;
+    box.appendChild(d);
+  }
+}
+function profRebuildPreview(){
+  if (!profUI.scene) return;
+  if (profUI.model){
+    profUI.scene.remove(profUI.model);
+    profUI.model.traverse(o=>{ if (o.isMesh && o.geometry) o.geometry.dispose(); });
+  }
+  const parts = buildEnemyModel(PROFILE.app);
+  parts.model.rotation.y = PI;        // 面朝镜头
+  profUI.model = parts.model;
+  profUI.scene.add(profUI.model);
+  profUI.parts = parts;
+}
+function profEnsurePreview(){
+  if (profUI.renderer || profUI.failed) return;
+  const cv = $('profPreview');
+  /* 主渲染器已经占着一个 WebGL 上下文，部分手机对上下文数有限制。
+     第二个建不出来时只降级预览，档案改名/配色/数据必须照样能用。 */
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:true });
+  } catch(_e){
+    profUI.failed = true;
+    try {
+      const x = cv.getContext('2d');
+      if (x){ x.clearRect(0,0,300,340); x.fillStyle='rgba(255,207,133,.75)';
+        x.font='12px sans-serif'; x.textAlign='center';
+        x.fillText('预览不可用',150,160); x.fillText('外观选项仍可调整',150,182); }
+    } catch(_e2){}
+    return;
+  }
+  renderer.setSize(300, 340, false);
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  profUI.renderer = renderer;
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xcfd8e2, 0x1a2028, 1.05));
+  const dl = new THREE.DirectionalLight(0xfff2df, 1.25); dl.position.set(2, 3.4, 2.6); scene.add(dl);
+  profUI.scene = scene;
+  profUI.cam = new THREE.PerspectiveCamera(34, 300/340, 0.1, 30);
+  profUI.cam.position.set(0, 1.35, 3.1);
+  profUI.cam.lookAt(0, 1.05, 0);
+  profRebuildPreview();
+  /* 预览可拖转：手机上单指拖，桌面上鼠标拖 */
+  let drag = false, lx = 0;
+  cv.addEventListener('pointerdown', e=>{ drag = true; lx = e.clientX; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e=>{
+    if (!drag || !profUI.model) return;
+    profUI.model.rotation.y += (e.clientX - lx) * 0.012;
+    lx = e.clientX;
+  });
+  cv.addEventListener('pointerup', ()=>{ drag = false; });
+  cv.addEventListener('pointercancel', ()=>{ drag = false; });
+}
+function profPreviewLoop(){
+  if ($('profPanel').classList.contains('hide')){ profUI.raf = 0; return; }
+  if (!profUI.renderer || profUI.failed){ profUI.raf = 0; return; }
+  profUI.raf = requestAnimationFrame(profPreviewLoop);
+  profUI.phase += 0.016;
+  if (profUI.model && !profUI._drag){
+    /* 轻微呼吸式待机动画 + 缓慢自转，让发型/体型一眼可辨 */
+    profUI.model.rotation.y += 0.004;
+    if (profUI.parts){
+      const p = profUI.parts;
+      p.body.position.y = Math.sin(profUI.phase * 2.2) * 0.012;
+    }
+  }
+  profUI.renderer.render(profUI.scene, profUI.cam);
+}
+function profOpen(){
+  profUI._drag = false;
+  /* 记录打开时的档案快照：输入框是实时写入 PROFILE 的，关面板时拿当前值
+     跟当前值比永远相等，必须跟「打开前」比才知道到底改没改。 */
+  profUI.openName = PROFILE.name;
+  profUI.openApp  = JSON.stringify(PROFILE.app);
+  $('profName').value = PROFILE.name;
+  profRefreshUI(); profRefreshStats();
+  profEnsurePreview();
+  profRebuildPreview();
+  $('profPanel').classList.remove('hide');
+  if (!profUI.raf) profUI.raf = requestAnimationFrame(profPreviewLoop);
+}
+function profClosePanel(){
+  $('profPanel').classList.add('hide');
+  /* 名字不许留空：清空了就退回打开前那个 */
+  const raw = ($('profName').value || '').trim().slice(0, 12);
+  PROFILE.name = raw || profUI.openName || '新兵';
+  $('profName').value = PROFILE.name;
+  const nameChanged = PROFILE.name !== (profUI.openName || '');
+  const appChanged  = JSON.stringify(PROFILE.app) !== (profUI.openApp || '');
+  if (nameChanged || appChanged){
+    saveProfile();
+    mpUpdateRoster();
+    /* 已经在房间里：立刻把新名字/新外观推给其他人，不用等下一局。
+       房主广播给全体客机；客机发给房主，由房主转发给其余客机。 */
+    if (NET.open){
+      netSend({ t:'prof', i: NET.host ? 0 : NET.seat,
+                n: PROFILE.name, ap: PROFILE.app });
+    }
+  }
+}
+$('profClose').addEventListener('click', e=>{ e.stopPropagation(); profClosePanel(); });
+$('profPanel').addEventListener('click', e=>{
+  e.stopPropagation();
+  if (e.target === $('profPanel')) profClosePanel();
+});
+$('profName').addEventListener('input', e=>{
+  PROFILE.name = (e.target.value || '').slice(0, 12);
+  saveProfile();
+});
+$('profName').addEventListener('keydown', e=>e.stopPropagation());
+$('profTorso').addEventListener('input', e=>{
+  PROFILE.app.torso = parseFloat(e.target.value) || 1;
+  $('profTorsoV').textContent = profTorsoLabel(PROFILE.app.torso);
+  saveProfile();
+  if (!profUI._torsoT) profUI._torsoT = setTimeout(()=>{
+    profUI._torsoT = 0; profRebuildPreview();
+  }, 140);
+});
+$('profTorso').addEventListener('pointerdown', e=>e.stopPropagation());
+$('profPreview').addEventListener('pointerdown', e=>{
+  profUI._drag = true;
+  setTimeout(()=>{ profUI._drag = false; }, 1500);   // 拖动时暂停自转
+});
+
 $('mpChooseHost').addEventListener('click', e=>{ e.stopPropagation(); mpHostStart(); });
 $('mpChooseJoin').addEventListener('click', e=>{ e.stopPropagation(); mpShowPanel('join'); });
 $('mpClose').addEventListener('click', e=>{ e.stopPropagation(); $('mpPanel').classList.add('hide'); });
@@ -13890,6 +14608,7 @@ function frame(now){
 
   if (G.running && !G.over){
     G.elapsed += dt;
+    profTick(now);           // 生涯数据每 5 秒存一次盘
     if (!NET.guest && G.mode !== 'survival') G.time -= dt;   // 客机的时间完全由房主下发
     if (G.grace > 0) G.grace -= dt;
     updatePlayer(dt);
