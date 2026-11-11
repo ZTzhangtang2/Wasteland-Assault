@@ -23,7 +23,7 @@
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="第一人称视角望向集装箱堆场，M4 卡宾枪正在向敌兵开火，HUD 上有小地图、倒计时与弹药计数。">
+<meta property="og:image:alt" content="第一人称视角望向集装箱堆场，M4突击步枪正在向敌兵开火，HUD 上有小地图、倒计时与弹药计数。">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@Star_Knight12">
@@ -31,7 +31,7 @@
 <meta name="twitter:title" content="废土强袭（Wasteland Assault） — 一个 HTML 文件里的第一人称射击">
 <meta name="twitter:description" content="十名敌兵据守集装箱堆场，你只有七分钟。整个世界、武器、AI 与音效都在一个 HTML 文件里，无需构建，没有素材文件。">
 <meta name="twitter:image" content="https://starknightt.github.io/operation-ironhold/og.jpg">
-<meta name="twitter:image:alt" content="第一人称视角望向集装箱堆场，M4 卡宾枪正在向敌兵开火，HUD 上有小地图、倒计时与弹药计数。">
+<meta name="twitter:image:alt" content="第一人称视角望向集装箱堆场，M4突击步枪正在向敌兵开火，HUD 上有小地图、倒计时与弹药计数。">
 <style>
   :root{
     --amber:#ffb340;
@@ -1698,13 +1698,13 @@ body.gear-panel #hotbar{opacity:.25;}
   </div>
 
   <div id="slots">
-    <div class="slot act" data-slot="0"><b>1</b><span>M4 卡宾枪</span></div>
-    <div class="slot" data-slot="1"><b>2</b><span>P-9 手枪</span></div>
+    <div class="slot act" data-slot="0"><b>1</b><span>M4突击步枪</span></div>
+    <div class="slot" data-slot="1"><b>2</b><span>P226 手枪</span></div>
     <div class="slot nade" data-slot="2"><b class="nadek">G</b><span>手雷×2</span></div>
   </div>
 
   <div id="ammo">
-    <div id="wname">M4 卡宾枪</div>
+    <div id="wname">M4突击步枪</div>
     <div id="wmode">全自动</div>
     <div id="ammoRow"><span id="magNum" class="mono">30</span><span id="resNum" class="mono">/ 210</span></div>
     <div id="wicon"></div>
@@ -6193,11 +6193,2562 @@ function buildSniper(){
            adsRef:0.7105 };                                // scope centre
 }
 
+
+/* =========================================================================
+   9A. 新增武器 · 3D 模型适配层
+   ------------------------------------------------------------------------
+   素材来自用户提供的 5 个单文件 HTML（SCAR-L / GLOCK 17 / AK-47 / AA-12 /
+   AWM）。原稿用 three.js 0.160 ESM 写成了完整的展示场景，这里把「建模部分」
+   原样搬进游戏主脚本的 three.js r128 环境：
+     - 剥掉渲染器 / 相机 / 灯光 / OrbitControls / 动画循环 / 舞台地面
+     - 补 r128 缺失的 SRGBColorSpace 常量与 RoundedBoxGeometry addon
+     - 用一张程序化摄影棚环境贴图接管原本 scene.environment 提供的 IBL，
+       否则高 metalness 的枪身在没有 IBL 时会渲染成黑块
+     - 统一缩放（cm -> m）、朝向（枪口 -> -Z）并挂上游戏要求的动画锚点
+   几何、材质、铭文贴图、木纹、瞄准镜等细节均保留原稿。
+   ========================================================================= */
+(function(){
+'use strict';
+const T = THREE;
+
+/* r128 没有这些 0.160 常量；给个占位值，随后在 fixMaterials 里把 colorSpace
+   翻译成 r128 认识的 texture.encoding。 */
+if (T.SRGBColorSpace === undefined) T.SRGBColorSpace = 'srgb';
+if (T.LinearSRGBColorSpace === undefined) T.LinearSRGBColorSpace = 'srgb-linear';
+
+/* addons/geometries/RoundedBoxGeometry.js 在 r128 不存在：用细分 Box 顶替，
+   轮廓与尺寸完全一致，只是少了极小的倒角。 */
+function RBG(w, h, d, seg, radius){
+  return new T.BoxGeometry(w, h, d, 2, 2, 2);
+}
+
+/* 摄影棚环境：上亮下暗 + 几条竖向柔光箱，给金属件打出条状反射。
+   四个模型的原稿都靠 scene.environment 做 IBL，这里改成显式 envMap。 */
+const STUDIO_ENV = (function(){
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+  const x = c.getContext('2d');
+  let g = x.createLinearGradient(0,0,0,512);
+  g.addColorStop(0,'#98a4b2'); g.addColorStop(.42,'#5a6470');
+  g.addColorStop(.52,'#2b3138'); g.addColorStop(1,'#08090c');
+  x.fillStyle = g; x.fillRect(0,0,1024,512);
+  /* 柔光箱不能是纯白：r128 没有 PMREM 预卷积，纯白会被高 metalness
+     的枪身当镜面整片反射出来，白色套筒就是这么爆掉的。 */
+  const bar = (cx,cy,w,h,a)=>{
+    x.save(); x.shadowColor='rgba(206,218,234,'+a+')'; x.shadowBlur=46;
+    x.fillStyle='rgba(206,218,234,'+a+')'; x.fillRect(cx-w/2,cy-h/2,w,h); x.restore();
+  };
+  bar(150,190,74,300,.55); bar(410,150,52,230,.48); bar(700,175,110,270,.55);
+  bar(930,205,44,220,.42); bar(512,26,760,42,.18); bar(300,300,220,26,.16);
+  const t = new T.CanvasTexture(c);
+  t.mapping = T.EquirectangularReflectionMapping;
+  if (T.sRGBEncoding !== undefined) t.encoding = T.sRGBEncoding;
+  return t;
+})();
+
+/* 修正材质：IBL、sRGB 解码、阴影标记；同时给几何体打 uvScaled 标记，
+   让主脚本的 texelize() 跳过——否则它会把铭文贴图的 UV 重新拉伸。 */
+function fixMaterials(root){
+  const done = new Set();
+  root.traverse(o=>{
+    if(!o.isMesh && !o.isInstancedMesh) return;
+    const geo = o.geometry;
+    if (geo) geo.userData.uvScaled = true;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m=>{
+      if(!m) return;
+      ['map','bumpMap','roughnessMap','normalMap','emissiveMap','alphaMap','lightMap','aoMap']
+        .forEach(k=>{
+          const tx = m[k];
+          if(tx && tx.colorSpace === 'srgb' && T.sRGBEncoding !== undefined){
+            tx.encoding = T.sRGBEncoding; tx.needsUpdate = true;
+          }
+        });
+      if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial){
+        if (!m.envMap) m.envMap = STUDIO_ENV;
+        /* 0.160 原稿用的是 PMREM 预卷积过的 scene.environment；r128 这里
+           只有一张未卷积的 CanvasTexture。高 metalness + 低 roughness 会把
+           它当镜面采样，枪身会反射出整片死白。压住反射强度并抬高最低
+           粗糙度，金属质感还在，但不会再过曝。 */
+        const ei = (m.envMapIntensity === undefined) ? 1.0 : m.envMapIntensity;
+        m.envMapIntensity = ei * 0.42;
+        /* 游戏视图模型灯光很强：原稿 metalness .8 / roughness .3 的套筒会
+           被打出一整片镜面死白，连防滑槽和抛壳窗都看不见。金属度封顶
+           0.45、粗糙度下限 0.65 后高光散开，金属质感还在但不再过曝。
+           min/max 形式使本来就达标的木质 / 聚合物材质完全不受影响。 */
+        if (m.metalness !== undefined) m.metalness = Math.min(m.metalness, 0.45);
+        if (m.roughness !== undefined) m.roughness = Math.max(m.roughness, 0.65);
+        if (!done.has(m)){ done.add(m); m.needsUpdate = true; }
+      }
+    });
+    o.castShadow = true; o.receiveShadow = true;
+  });
+}
+
+/* 红点 / 全息的发光点贴图：程序化径向渐变，免得依赖主脚本的 TEX.glow。
+   用 AdditiveBlending 的 Sprite 贴上去，开镜时就是一个悬浮在镜片上的红/青点。 */
+const RED_DOT_TEX = (function(){
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32,32,0, 32,32,30);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(.30,'rgba(255,255,255,.85)');
+  g.addColorStop(.7,'rgba(255,255,255,.18)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle = g; x.beginPath(); x.arc(32,32,30,0,7); x.fill();
+  return new T.CanvasTexture(c);
+})();
+
+/* 3D 瞄具：红点 / 全息 / 2× / 4× / 热成像。挂在枪的 body 空间（沿枪管 ±Z、
+   顶部 +Y），与游戏自带 buildRifle 的 opt 同坐标系——所以 ADS 时只要把
+   vm.adsPos.y 压到「瞄具中心高度」，红点 / 镜筒中心就会落在屏幕正中准星上。
+   partId 决定造型；flip=true（AWM，rotY=-90°）时整组绕 Y 转 180°，让镜片
+   朝向枪口而不是枪托。 */
+function buildOptic3D(partId, flip){
+  const g = new T.Group();
+  const dark  = new T.MeshStandardMaterial({color:0x232a30, metalness:.55, roughness:.45, envMap:STUDIO_ENV, envMapIntensity:.6});
+  const ring  = new T.MeshStandardMaterial({color:0x3a424b, metalness:.7,  roughness:.4,  envMap:STUDIO_ENV, envMapIntensity:.6});
+  const glass = new T.MeshStandardMaterial({color:0x0c1418, metalness:.2,  roughness:.08, transparent:true, opacity:.5, envMap:STUDIO_ENV, envMapIntensity:.8});
+  const isScope = (partId==='scope2'||partId==='scope4'||partId==='thermal');
+  const isThermal = (partId==='thermal');
+  if(!isScope){
+    /* 红点 / 全息：短镜筒 + 两端圈 + 前窗 + 发光点 */
+    const tubeLen = 0.082, tubeR = 0.019;
+    const tube = new T.Mesh(new T.CylinderGeometry(tubeR, tubeR, tubeLen, 18), dark);
+    tube.rotation.x = Math.PI/2; g.add(tube);
+    const b1 = new T.Mesh(new T.CylinderGeometry(tubeR+0.002, tubeR, 0.012, 18), ring);
+    b1.rotation.x = Math.PI/2; b1.position.z = -tubeLen/2; g.add(b1);
+    const b2 = new T.Mesh(new T.CylinderGeometry(tubeR, tubeR+0.002, 0.012, 18), ring);
+    b2.rotation.x = Math.PI/2; b2.position.z =  tubeLen/2; g.add(b2);
+    const lens = new T.Mesh(new T.CylinderGeometry(tubeR-0.003, tubeR-0.003, 0.004, 18), glass);
+    lens.rotation.x = Math.PI/2; lens.position.z = -tubeLen/2; g.add(lens);
+    const dotColor = partId==='holo' ? 0x33d6ff : 0xff3320;
+    /* 发光点放在前窗镜面外侧（z=-tubeLen/2，朝枪口方向，最靠近目标、最易被看到），
+       再用 depthTest:false + 高 renderOrder 让它像真实红点分划一样始终浮在镜筒之上
+       可见、不被镜筒/前窗遮挡。开镜时整枪下压到瞄具中心高度，红点落在屏幕准星附近。 */
+    const dot = new T.Mesh(new T.SphereGeometry(0.0030,8,6),
+      new T.MeshBasicMaterial({color:dotColor, depthTest:false}));
+    dot.position.set(0,0,-tubeLen/2+0.004); dot.renderOrder = 999; g.add(dot);
+    const glow = new T.Sprite(new T.SpriteMaterial({color:dotColor, map:RED_DOT_TEX, transparent:true,
+      blending:T.AdditiveBlending, depthWrite:false, depthTest:false, opacity:0.9}));
+    glow.scale.set(0.016,0.016,1); glow.position.set(0,0,-tubeLen/2+0.004); glow.renderOrder = 1000; g.add(glow);
+    g.userData.dot = dot; g.userData.glow = glow;
+  } else {
+    /* 倍镜 / 热成像：长镜筒 + 物镜 + 目镜 + 两道镜环 */
+    const tubeLen = isThermal ? 0.20 : (partId==='scope4' ? 0.26 : 0.22);
+    const tubeR = 0.022;
+    const tube = new T.Mesh(new T.CylinderGeometry(tubeR, tubeR, tubeLen, 18), dark);
+    tube.rotation.x = Math.PI/2; g.add(tube);
+    const objb = new T.Mesh(new T.CylinderGeometry(tubeR+0.007, tubeR, 0.03, 18), ring);
+    objb.rotation.x = Math.PI/2; objb.position.z = -tubeLen/2; g.add(objb);
+    const ocb  = new T.Mesh(new T.CylinderGeometry(tubeR+0.007, tubeR+0.007, 0.03, 18), ring);
+    ocb.rotation.x = Math.PI/2; ocb.position.z =  tubeLen/2; g.add(ocb);
+    const tint = isThermal ? 0x2f7f6a : 0x3f7f6a;
+    const g1 = new T.Mesh(new T.CylinderGeometry(tubeR-0.004, tubeR-0.004, 0.004, 18),
+      new T.MeshStandardMaterial({color:tint, metalness:.2, roughness:.1, transparent:true, opacity:.55, envMap:STUDIO_ENV, envMapIntensity:.8}));
+    g1.rotation.x = Math.PI/2; g1.position.z = -tubeLen/2; g.add(g1);
+    for(const zz of [-tubeLen/2-0.005, tubeLen/2-0.005]){
+      const r = new T.Mesh(new T.TorusGeometry(tubeR+0.004, 0.004, 8, 18), ring);
+      r.position.z = zz; g.add(r);
+    }
+  }
+  /* 镜座：把瞄具压在导轨上，往下伸到枪身高度 */
+  const mount = new T.Mesh(new T.BoxGeometry(0.028, 0.020, 0.062), dark);
+  mount.position.y = -0.022; g.add(mount);
+  fixMaterials(g);
+  if(flip) g.rotation.y = Math.PI;
+  return g;
+}
+
+/* ---------------- 五份原稿建模代码（裁剪版） ---------------- */
+function rawScarL(){
+  /* 原稿在内部也声明了局部变量 T（导轨截面），不能直接引用外层 T；
+     用全局 THREE 取得命名空间，避开 TDZ 遮蔽。 */
+  const e = THREE;
+    const l = (() => {
+            const t = document.createElement("canvas");
+            t.width = t.height = 128;
+            const o = t.getContext("2d"),
+                n = o.createImageData(128, 128);
+            for (let e = 0; e < n.data.length; e += 4) {
+                const t = 105 + 90 * Math.random();
+                n.data[e] = n.data[e + 1] = n.data[e + 2] = t, n.data[e + 3] = 255
+            }
+            o.putImageData(n, 0, 0);
+            const a = new e.CanvasTexture(t);
+            return a.wrapS = a.wrapT = e.RepeatWrapping, a.repeat.set(5, 5), a
+        })(),
+        d = (t, o, n, a = 0) => new e.MeshStandardMaterial({
+            color: t,
+            metalness: o,
+            roughness: n,
+            bumpMap: a ? l : null,
+            bumpScale: a
+        }),
+        h = d(2566701, .62, .44, .012),
+        p = d(9269320, .05, .74, .025),
+        f = d(8415299, .12, .64, .02),
+        L = d(3619647, .9, .31, .008),
+        M = d(9870241, .95, .27),
+        u = d(1711135, .45, .55, .006),
+        m = d(1776670, .02, .94, .03),
+        w = d(790032, .1, .95),
+        S = d(14276300, .1, .7),
+        v = new e.Group;
+    /* root group v is used directly */
+    const g = (e, t = v) => (t.add(e), e.isMesh && (e.castShadow = !0, e.receiveShadow = !0), e);
+
+    function b(t) {
+        const o = t.match(/[MLQZ]|-?\d*\.?\d+/g) || [],
+            n = "h" === t[0] ? new e.Path : new e.Shape;
+        let a = 0,
+            s = 0,
+            i = 0;
+        for (; i < o.length;) {
+            const e = o[i++];
+            if ("Z" === e) n.closePath();
+            else if ("M" === e) a = +o[i++], s = +o[i++], n.moveTo(a, s);
+            else if ("L" === e) a = +o[i++], s = +o[i++], n.lineTo(a, s);
+            else if ("Q" === e) {
+                const e = +o[i++],
+                    t = +o[i++];
+                a = +o[i++], s = +o[i++], n.quadraticCurveTo(e, t, a, s)
+            }
+        }
+        return n
+    }
+
+    function x(t, o, n, a = [], s = .1, i = v) {
+        const r = b(t);
+        a.forEach(e => {
+            const t = b("h" + e);
+            r.holes.push(t)
+        });
+        const c = new e.ExtrudeGeometry(r, {
+            depth: o,
+            bevelEnabled: s > 0,
+            bevelThickness: s,
+            bevelSize: s,
+            bevelSegments: 1,
+            curveSegments: 10
+        });
+        return c.translate(0, 0, -o / 2), g(new e.Mesh(c, n), i)
+    }
+
+    function y(t, o, n, a, s, i, r, c = 0, l = v) {
+        const d = g(new e.Mesh(new e.BoxGeometry(t, o, n), a), l);
+        return d.position.set(s, i, r), d.rotation.z = c, d
+    }
+
+    function E(t, o, n, a, s, i, r, c, l = r, d = 16, h = v) {
+        const p = new e.Vector3(t, o, n),
+            f = new e.Vector3(a, s, i),
+            L = g(new e.Mesh(new e.CylinderGeometry(l, r, p.distanceTo(f), d), c), h);
+        return L.position.copy(p).add(f).multiplyScalar(.5), L.quaternion.setFromUnitVectors(new e.Vector3(0, 1, 0), f.clone().sub(p).normalize()), L
+    }
+
+    function C(t, o, n, a, s, i = 0, r = M, c = v) {
+        const l = g(new e.Mesh(new e.TorusGeometry(t, o, 8, 22), r), c);
+        return l.position.set(n, a, s), l.rotation.y = i, l
+    }
+
+    function I(t, o, n, a = v) {
+        const s = new e.InstancedMesh(t, o, n.length),
+            i = new e.Object3D;
+        return n.forEach((e, t) => {
+            i.position.set(e[0], e[1], e[2]), i.rotation.z = e[3] || 0, i.updateMatrix(), s.setMatrixAt(t, i.matrix)
+        }), s.instanceMatrix.needsUpdate = !0, s.frustumCulled = !1, s.castShadow = !0, s.receiveShadow = !0, a.add(s), s
+    }
+
+    function P(t) {
+        const o = document.createElement("canvas");
+        o.width = 512, o.height = 200;
+        const n = o.getContext("2d");
+        t.forEach(e => {
+            n.font = e[3], n.fillStyle = e[4] || "#e6e4dc", n.fillText(e[0], e[1], e[2])
+        });
+        const a = new e.CanvasTexture(o);
+        return a.colorSpace = e.SRGBColorSpace, a.anisotropy = 8, a
+    }
+
+    function A(t, o, n, a, s, i, r = 1, c = v) {
+        const l = new e.Mesh(new e.PlaneGeometry(o, n), new e.MeshBasicMaterial({
+            map: t,
+            transparent: !0,
+            depthWrite: !1,
+            side: e.DoubleSide,
+            opacity: .93
+        }));
+        return l.position.set(a, s, i), r < 0 && (l.rotation.y = Math.PI, l.scale.x = -1), c.add(l), l
+    }
+    x("M -18 4.6 L 30.5 4.6 L 31.8 3.5 L 31.8 -1.5 L 9.2 -1.5 L 8 -2.8 L -17 -2.8 L -18 -1.7 Z", 4.2, h, [], .13), y(7, 2.6, .12, w, -.4, 1.2, 2.24), y(7.2, .24, .32, L, -.4, 2.62, 2.27), y(.24, 2.6, .32, L, -3.9, 1.2, 2.27), y(3.2, .55, .55, h, -1.6, 3.05, 2.4), y(2.6, 1.6, .1, M, .8, 1.1, 2.25), y(6.6, .72, .1, w, 4.6, 2.35, -2.24), y(6.6, .12, .18, L, 4.6, 2.75, -2.28), E(2.9, 2.35, -2.15, 2.9, 2.35, -3.5, .2, M), E(2.9, 2.35, -3.5, 2.9, 2.35, -3.9, .55, M, .55, 12), C(.5, .1, 2.9, 2.35, -3.7, Math.PI / 2, L), A(P([
+        ["FN", 16, 76, "bold 72px Arial", "#eeeae0"],
+        ["SCAR-L   Mk 16 Mod 0", 150, 48, "bold 25px Arial", "#eeeae0"],
+        ["CAL. 5.56 x 45 NATO", 150, 82, "19px Arial", "#cbc8bf"],
+        ["FN HERSTAL S.A.  BELGIUM", 150, 112, "16px Arial", "#b3b0a6"],
+        ["S/N  SC16-004821", 16, 150, "17px monospace", "#b3b0a6"],
+        ["SAFE / SEMI / AUTO", 16, 180, "14px Arial", "#9b988f"]
+    ]), 13.5, 5.3, -10.6, .6, 2.27);
+    for (const e of [-1, 1])
+        for (const t of [-15, -7, 1, 9, 17, 25]) E(t, -1.85, 2.2 * e, t, -1.85, 2.34 * e, .15, M, .15, 10);
+    for (const e of [-16.2, 6.5]) E(e, -1.2, -2.35, e, -1.2, 2.35, .3, M), E(e, -1.2, 2.35, e, -1.2, 2.55, .48, M, .48, 12);
+    y(49.4, .62, 2.1, u, 6.7, 4.92, 0);
+    const T = function(t, o, n = .1) {
+        const a = b(t),
+            s = new e.ExtrudeGeometry(a, {
+                depth: o,
+                bevelEnabled: n > 0,
+                bevelThickness: n,
+                bevelSize: n,
+                bevelSegments: 1,
+                curveSegments: 10
+            });
+        return s.translate(0, 0, -o / 2), s
+    }("M -0.32 0 L -0.23 .42 L .23 .42 L .32 0 Z", 2.1, 0);
+    T.translate(0, -0, 0);
+    const z = [];
+    for (let e = -17.7; e < 31.2; e += 1) z.push([e, 5.23, 0]);
+    I(T, u, z);
+    for (let e = 0; e < 5; e++) y(.1, .03, 2.12, S, 10 * e - 13, 5.68, 0);
+    for (let e = -16; e < 31; e += 8) y(.2, .16, .12, M, e, 5.1, 1.12), y(.2, .16, .12, M, e, 5.1, -1.12);
+    y(1.6, .7, 2, h, -15, 5.35, 0);
+    for (const e of [-.72, .72]) y(.28, 2.5, .28, h, -15, 6.75, e);
+    C(.62, .13, -15, 7.4, 0, Math.PI / 2, h), E(-15, 7.4, -.9, -15, 7.4, .9, .11, M), E(-15.9, 5.5, -1.1, -15.9, 5.5, -1.35, .35, M, .35, 12), y(.14, 6, .05, w, 8.2, 1.5, 2.24), y(.14, 6, .05, w, 8.2, 1.5, -2.24);
+    for (const t of [-1, 1]) {
+        for (const [e, o] of [
+                [11, 16],
+                [18, 23],
+                [25, 29.5]
+            ]) y(o - e, 1.5, .07, w, (e + o) / 2, 1.75, 2.25 * t), y(o - e + .2, .14, .14, h, (e + o) / 2, 1.75, 2.3 * t);
+        y(12.5, 1.15, .36, u, 24, 0, 2.36 * t);
+        const o = [];
+        for (let e = 18.2; e < 30; e += 1) o.push([e, 0, 2.62 * t]);
+        I(new e.BoxGeometry(.6, 1.5, .36), u, o)
+    }
+    y(11, .36, 1.5, u, 25, -1.62, 0);
+    const G = [];
+    for (let e = 20; e < 30; e += 1) G.push([e, -1.92, 0]);
+    I(new e.BoxGeometry(.6, .36, 1.5), u, G), C(.62, .12, 29, -.4, 2.35, 0, M), E(8, 1, 0, 11, 1, 0, 1.62, h, 1.62, 12), E(31.8, 1, 0, 34.3, 1, 0, .94, L), E(30.2, 1, 0, 33.2, 1, 0, 1.55, h, 1.55, 12), y(10, 2.9, .8, h, 20, 2.9, .9), E(20, 2.9, .9, 31, 2.9, .9, .34, M), E(33.2, 1, 0, 34.2, 1, 0, 1.02, M, 1.02, 16);
+    for (let e = 0; e < 4; e++) {
+        const t = e * Math.PI / 2;
+        y(.1, .1, .12, w, 34.23, 1 + .75 * Math.cos(t), .75 * Math.sin(t))
+    }
+    E(33.2, 1, 0, 39, 1, 0, .79, L, .79, 20), E(35.6, 1, 0, 35.9, 1, 0, .88, L, .88, 20), y(2.1, 2.6, 1.9, h, 32.2, 3.9, 0), y(1.8, .35, 2.1, h, 32.2, 5.25, 0), C(.95, .14, 32.2, 6.6, 0, Math.PI / 2, h), E(32.2, 5.3, 0, 32.2, 7.3, 0, .1, M), E(32.2, 7.25, 0, 32.2, 7.45, 0, .055, S), E(31.1, 5.3, -1.05, 31.1, 5.3, 1.05, .28, M, .28, 12), E(39, 1, 0, 41.4, 1, 0, 1.16, L, 1.16, 20), E(38.7, 1, 0, 39.3, 1, 0, 1.32, h, 1.32, 12);
+    for (const e of [39.6, 40.5, 41.1]) C(1.17, .055, e, 1, 0, Math.PI / 2, M);
+    C(1.02, .13, 43, 1, 0, Math.PI / 2, L);
+    for (let e = 0; e < 8; e++) {
+        if (5 === e || 6 === e || 7 === e) continue;
+        const t = e * Math.PI / 4 + .3;
+        E(41.35, 1 + 1.02 * Math.cos(t), 1.02 * Math.sin(t), 43, 1 + 1.02 * Math.cos(t), 1.02 * Math.sin(t), .13, L, .13, 8)
+    }
+    x("M -18 -2.5 L 8 -2.5 L 8 -4.4 L 6.7 -6.9 L 1 -6.9 L -.4 -4.4 L -10.6 -4.4 L -11.6 -3.2 L -17.6 -3.2 Z", 3.6, p, [], .12);
+    for (let e = 0; e < 4; e++) y(5.4, .12, .08, f, 3.2, -3.4 - .7 * e, 1.85 + .06 * e);
+    for (let e = 0; e < 4; e++) y(5.4, .12, .08, f, 3.2, -3.4 - .7 * e, -1.85 - .06 * e);
+    x("M -11.4 -3.8 L -1.4 -3.8 L -.6 -5.2 L -1.8 -8.3 L -10 -8.3 L -12.2 -6.8 Z", 1.7, p, ["M -9.8 -4.8 L -2.6 -4.8 L -2.2 -6 L -3.1 -7.4 L -9 -7.4 L -10.4 -6.2 Z"], .05), x("M -6.7 -4.2 L -5.6 -4.2 L -5.9 -6.3 Q -6.1 -7.3 -7.1 -7.1 Q -7.9 -6.8 -7.2 -5 Z", .75, M, [], .03), x("M -10.6 -4 L -4.6 -4 L -7.2 -13.2 L -13.2 -13.2 Z", 3, p, [], .14);
+    for (let e = 0; e < 3; e++) y(.32, .26, 3.05, w, -5.5 - .6 * e, -7.1 - 1.75 * e, 0);
+    y(6.2, .7, 3.1, m, -10.2, -13.35, 0);
+    for (const e of [-1, 1]) E(-8.6, -2.65, 1.8 * e, -8.6, -2.65, 2.1 * e, .62, h, .62, 14), y(1.5, .28, .3, h, -7.9, -2.9, 2.2 * e, -.55 * e), A(P([
+        ["S   1   AUTO", 18, 60, "bold 34px Arial", "#dedbd2"]
+    ]), 4.2, 1.2, -8.6, -1.55, 1.94 * e, e);
+    E(6.2, -4.1, 1.8, 6.2, -4.1, 2.25, .55, M, .55, 14), y(2.4, .45, .35, h, 7, -2.5, -2.05), E(-18.2, .6, 1.7, -18.2, .6, 2.7, 1.5, h, 1.5, 16), E(-18.2, .6, 2.7, -18.2, .6, 2.95, .62, M, .62, 12);
+    const R = new e.Group;
+    R.position.set(1.05, -5.8, 0), R.rotation.z = .16, v.add(R), x("M 0 0 L 6.2 0 Q 7 -9 6.3 -17.4 L 5.9 -18 L .3 -18 Z", 2.5, f, [], .07, R), y(6.8, .95, 2.9, m, 3.2, -18.2, 0, 0, R);
+    for (const e of [-1, 1]) {
+        for (const t of [1.6, 3.2, 4.8]) y(.14, 12, .07, h, t, -9, 1.29 * e, 0, R);
+        A(P([
+            ["FN", 18, 72, "bold 66px Arial", "#d8d5cb"]
+        ]), 2.6, 2.2, 3.2, -13.7, 1.31 * e, e, R)
+    }
+    y(6.3, .5, .12, M, 3.1, -1.2, 1.3, 0, R), E(-18, .6, 0, -34, .6, 0, 1.15, h, 1.15, 16);
+    for (let e = 0; e < 6; e++) y(.5, .35, .22, M, -21 - 2.3 * e, -.42, 0);
+    x("M -19.5 3.4 L -19.5 -1 L -21.5 -2.3 L -24.5 -3.1 L -34.5 -3.1 L -38 -5.5 L -38.4 3.8 L -36.6 4.3 L -22 4.3 Z", 3.4, p, ["M -22.9 -.7 L -33.8 -.7 L -35.9 2.1 L -25.6 2.1 Q -23.4 1.5 -22.9 -.7 Z", "M -20.6 .5 L -22.3 .5 L -22.3 2.1 L -20.6 2.1 Z"], .12), x("M -22.4 4.2 L -35.6 4.2 L -36.4 4.7 L -36.4 5.2 L -35 5.35 L -23 5.35 L -22.2 5 Z", 3, p, [], .09);
+    for (const e of [-1, 1]) E(-23.5, 4.65, 1.35 * e, -34.5, 4.65, 1.35 * e, .12, M, .12, 8);
+    y(12.8, .36, 3.1, m, -29.3, 5.42, 0);
+    for (const e of [-1, 1]) E(-22, 1.4, 1.6 * e, -22, 1.4, 1.95 * e, .6, h, .6, 14);
+    for (const e of [-1, 1]) C(.65, .13, -36.4, -2.2, 1.85 * e, 0, M);
+    for (const e of [-1, 1])
+        for (let t = 0; t < 4; t++) E(-24.5 - 2.2 * t, 3.3, 1.72 * e, -24.5 - 2.2 * t, 3.3, 1.76 * e, .22, w, .22, 10);
+    x("M -38.4 4.2 L -41.3 4.2 L -42 3.1 L -42 -5.4 L -40.9 -6.3 L -38.4 -5.5 Z", 3.8, m, [], .09);
+    for (let e = 0; e < 9; e++) y(.1, .16, 3.5, w, -41.9, 3 - 1.05 * e, 0);
+  return v;
+}
+
+function rawGlock17(){
+    /* ---------- 工具 ---------- */
+    const cvt = (w, h) => {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        return c;
+    };
+    const tex = c => {
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 8;
+        return t;
+    };
+
+    function shape(p) {
+        const s = new THREE.Shape();
+        s.moveTo(p[0][0], p[0][1]);
+        for (let i = 1; i < p.length; i++) s.lineTo(p[i][0], p[i][1]);
+        s.closePath();
+        return s;
+    }
+
+    function rrect(w, h, r) {
+        const s = new THREE.Shape(),
+            x = -w / 2,
+            y = -h / 2;
+        r = Math.min(r, w / 2, h / 2);
+        s.moveTo(x + r, y);
+        s.lineTo(x + w - r, y);
+        s.quadraticCurveTo(x + w, y, x + w, y + r);
+        s.lineTo(x + w, y + h - r);
+        s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        s.lineTo(x + r, y + h);
+        s.quadraticCurveTo(x, y + h, x, y + h - r);
+        s.lineTo(x, y + r);
+        s.quadraticCurveTo(x, y, x + r, y);
+        return s;
+    }
+    /* 侧面轮廓沿 Z 挤出，带倒角 —— 倒角是金属高光的关键 */
+    function solid(sh, d, b, mat, zc = 0) {
+        const s = Array.isArray(sh) ? shape(sh) : sh;
+        const g = new THREE.ExtrudeGeometry(s, {
+            depth: d - 2 * b,
+            bevelEnabled: b > 0,
+            bevelThickness: b,
+            bevelSize: b * .34,
+            bevelSegments: 2,
+            steps: 1,
+            curveSegments: 8
+        });
+        g.translate(0, 0, -d / 2 + b + zc);
+        const m = new THREE.Mesh(g, mat);
+        m.castShadow = m.receiveShadow = true;
+        return m;
+    }
+
+    function rbox(w, h, d, mat, x, y, z, r = .07) {
+        const m = solid(rrect(w, h, Math.max(r, .02)), d, Math.min(.05, d / 4), mat);
+        m.position.set(x, y, z);
+        return m;
+    }
+
+    function box(w, h, d, mat, x, y, z) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        m.position.set(x, y, z);
+        m.castShadow = m.receiveShadow = true;
+        return m;
+    }
+
+    function cyl(r, len, mat, x, y, z, axis = 'x') {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 32), mat);
+        if (axis === 'x') m.rotation.z = Math.PI / 2;
+        if (axis === 'z') m.rotation.x = Math.PI / 2;
+        m.position.set(x, y, z);
+        m.castShadow = m.receiveShadow = true;
+        return m;
+    }
+
+    function plane(w, h, mat, x, y, z, rotY = 0) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+        m.position.set(x, y, z);
+        m.rotation.y = rotY;
+        return m;
+    }
+    const gun = new THREE.Group();
+    const slideGrp = new THREE.Group();   /* 套筒独立成组，供套筒后坐动画驱动 */
+    let addTarget = gun;
+    const add = (...o) => o.forEach(m => addTarget.add(m));
+
+    /* ---------- 摄影棚环境贴图：给金属打出条状反射 ---------- */
+    function envMap() {
+        const c = cvt(1024, 512),
+            x = c.getContext('2d');
+        let g = x.createLinearGradient(0, 0, 0, 512);
+        g.addColorStop(0, '#74808f');
+        g.addColorStop(.42, '#39434f');
+        g.addColorStop(.51, '#1c222b');
+        g.addColorStop(1, '#0a0c10');
+        x.fillStyle = g;
+        x.fillRect(0, 0, 1024, 512);
+        const sb = (cx, cy, w, h, a) => {
+            x.save();
+            x.shadowColor = 'rgba(255,255,255,' + a + ')';
+            x.shadowBlur = 48;
+            x.fillStyle = 'rgba(255,255,255,' + a + ')';
+            x.fillRect(cx - w / 2, cy - h / 2, w, h);
+            x.restore();
+        };
+        sb(150, 190, 74, 300, 1);
+        sb(410, 150, 52, 230, .9);
+        sb(700, 175, 110, 270, 1);
+        sb(930, 205, 44, 220, .8);
+        sb(512, 26, 760, 42, .32);
+        sb(300, 300, 220, 26, .3);
+        const t = new THREE.CanvasTexture(c);
+        t.mapping = THREE.EquirectangularReflectionMapping;
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    }
+    /* 聚合物细颗粒（用于整体微凹凸） */
+    function grainMap() {
+        const c = cvt(128, 128),
+            x = c.getContext('2d');
+        x.fillStyle = '#808080';
+        x.fillRect(0, 0, 128, 128);
+        for (let i = 0; i < 700; i++) {
+            const v = 90 + Math.random() * 110;
+            x.fillStyle = `rgb(${v},${v},${v})`;
+            x.beginPath();
+            x.arc(Math.random() * 128, Math.random() * 128, .5 + Math.random() * 1.3, 0, 7);
+            x.fill();
+        }
+        const t = new THREE.CanvasTexture(c);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(1, 1);
+        return t;
+    }
+
+    /* ---------- 材质 ---------- */
+    const M = {
+        slide: new THREE.MeshStandardMaterial({
+            color: 0x3a3f45,
+            metalness: .82,
+            roughness: .3,
+            envMapIntensity: 1.35
+        }),
+        slideEdge: new THREE.MeshStandardMaterial({
+            color: 0x2f343a,
+            metalness: .8,
+            roughness: .36,
+            envMapIntensity: 1.15
+        }),
+        frame: new THREE.MeshStandardMaterial({
+            color: 0x272a2e,
+            metalness: .06,
+            roughness: .68,
+            envMapIntensity: .95,
+            bumpMap: grainMap(),
+            bumpScale: .018
+        }),
+        steel: new THREE.MeshStandardMaterial({
+            color: 0x7c8389,
+            metalness: .9,
+            roughness: .24,
+            envMapIntensity: 1.3
+        }),
+        steelDk: new THREE.MeshStandardMaterial({
+            color: 0x4e545a,
+            metalness: .88,
+            roughness: .32,
+            envMapIntensity: 1.15
+        }),
+        poly: new THREE.MeshStandardMaterial({
+            color: 0x1e2124,
+            metalness: .05,
+            roughness: .78,
+            envMapIntensity: .7
+        }),
+        sight: new THREE.MeshStandardMaterial({
+            color: 0x1a1d20,
+            metalness: .1,
+            roughness: .78,
+            envMapIntensity: .4
+        }),
+        barrel: new THREE.MeshStandardMaterial({
+            color: 0x5a6066,
+            metalness: .88,
+            roughness: .32,
+            envMapIntensity: 1.0
+        }),
+        dark: new THREE.MeshStandardMaterial({
+            color: 0x0a0b0d,
+            metalness: .25,
+            roughness: .85
+        }),
+        white: new THREE.MeshStandardMaterial({
+            color: 0xf2f5f2,
+            emissive: 0x2b2f30,
+            roughness: .45,
+            metalness: .05
+        }),
+    };
+    const dmat = (r, m) => new THREE.MeshStandardMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        roughness: r,
+        metalness: m,
+        envMapIntensity: .85,
+        polygonOffset: true,
+        polygonOffsetFactor: -2
+    });
+
+    /* ---------- 侧面贴花：把铭文 / 防滑纹 / 颗粒 / 销钉全画在两张 canvas 上 ---------- */
+    function decal(sh, bb, z, draw, mat, mirror) {
+        const S = 72,
+            c = cvt(Math.round(bb.w * S), Math.round(bb.h * S)),
+            x = c.getContext('2d');
+        const P = (px, py) => [(mirror ? bb.maxX - px : px - bb.minX) * S, (bb.maxY - py) * S];
+        draw(x, P, S, mirror);
+        const t = tex(c);
+        mat = mat.clone();
+        mat.map = t;
+        mat.bumpMap = t;
+        mat.bumpScale = .01;
+        const g = new THREE.ShapeGeometry(Array.isArray(sh) ? shape(sh) : sh),
+            uv = g.attributes.uv,
+            pos = g.attributes.position;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, (mirror ? bb.maxX - pos.getX(i) : pos.getX(i) - bb.minX) / bb.w, (pos.getY(i) - bb.minY) / bb.h);
+        const m = new THREE.Mesh(g, mat);
+        m.position.z = z;
+        m.renderOrder = 3;
+        return m;
+    }
+    const txt = (x, P, S, str, px, py, size, a = .55, bold = true) => {
+        const [u, v] = P(px, py);
+        x.save();
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.font = `${bold?700:400} ${Math.round(size*S)}px Arial,Helvetica,sans-serif`;
+        x.fillStyle = `rgba(8,10,12,${a*.75})`;
+        x.fillText(str, u + 1, v + 1);
+        x.fillStyle = `rgba(228,236,245,${a})`;
+        x.fillText(str, u, v);
+        x.restore();
+    };
+    const pin = (x, P, S, px, py, r = .17) => {
+        const [a, b] = P(px, py);
+        const g = x.createRadialGradient(a - r * S * .3, b - r * S * .3, 1, a, b, r * S);
+        g.addColorStop(0, 'rgba(150,158,166,.9)');
+        g.addColorStop(.65, 'rgba(58,64,70,.95)');
+        g.addColorStop(1, 'rgba(6,8,10,.95)');
+        x.fillStyle = g;
+        x.beginPath();
+        x.arc(a, b, r * S, 0, 7);
+        x.fill();
+        x.strokeStyle = 'rgba(190,200,210,.25)';
+        x.lineWidth = 1;
+        x.beginPath();
+        x.arc(a, b, r * S, 0, 7);
+        x.stroke();
+    };
+
+    /* 套筒侧面 */
+    function slideArt(x, P, S, mirror) {
+        x.fillStyle = 'rgba(158,174,192,.07)';
+        x.fillRect(0, 0, x.canvas.width, x.canvas.height); // 暗面补一层环境反光
+        // 套筒前后防滑槽（近竖直、略后倾）
+        const ser = (x0, x1, step, al) => {
+            for (let s = x0; s < x1; s += step) {
+                const [a, b] = P(s, 2.58), [c, d] = P(s + .15, 4.8);
+                x.strokeStyle = `rgba(0,0,0,${al})`;
+                x.lineWidth = .06 * S;
+                x.beginPath();
+                x.moveTo(a, b);
+                x.lineTo(c, d);
+                x.stroke();
+                x.strokeStyle = `rgba(206,218,230,${al*.6})`;
+                x.lineWidth = .02 * S;
+                x.beginPath();
+                x.moveTo(a + 2, b);
+                x.lineTo(c + 2, d);
+                x.stroke();
+            }
+        };
+        ser(-8.1, -5.5, .30, .7);
+        ser(6.25, 9.0, .31, .34);
+        // 上下分件线 / 边缘高光
+        const H = (y, col, w) => {
+            const [a, b] = P(-8.4, y), [c] = P(10.2, y);
+            x.strokeStyle = col;
+            x.lineWidth = w;
+            x.beginPath();
+            x.moveTo(a, b);
+            x.lineTo(c, b);
+            x.stroke();
+        };
+        H(2.43, 'rgba(0,0,0,.6)', 2);
+        H(2.5, 'rgba(200,212,224,.15)', 1);
+        H(4.88, 'rgba(214,224,235,.13)', 1);
+        if (mirror) { // 左侧：GLOCK 17 大标
+            txt(x, P, S, 'GLOCK 17', -3.9, 3.82, .63, .85);
+            txt(x, P, S, 'AUSTRIA  9×19', -3.9, 3.05, .24, .58, false);
+            txt(x, P, S, 'MADE IN AUSTRIA', 2.9, 3.15, .22, .48, false);
+            txt(x, P, S, 'GEN 5', 7.7, 3.0, .2, .4, false);
+        } else { // 右侧：序列号 / 检验章 / 抽壳钩
+            txt(x, P, S, 'MADE IN AUSTRIA', -4.2, 3.85, .24, .45, false);
+            txt(x, P, S, 'ABC  1234', -4.2, 3.1, .3, .5);
+            const [a, b] = P(3.0, 3.75);
+            x.strokeStyle = 'rgba(180,190,200,.35)';
+            x.lineWidth = 1.5;
+            x.beginPath();
+            x.arc(a, b, .42 * S, 0, 7);
+            x.stroke();
+            txt(x, P, S, '✦', 3.0, 3.75, .28, .3, false);
+            const [e, f] = P(1.15, 4.2), [g, h] = P(1.15, 4.85);
+            x.strokeStyle = 'rgba(0,0,0,.55)';
+            x.lineWidth = 3;
+            x.beginPath();
+            x.moveTo(e, f);
+            x.lineTo(g, h);
+            x.stroke();
+        }
+    }
+    /* 底把 / 握把侧面 */
+    function frameArt(x, P, S, mirror) {
+        // 握把 RTF 颗粒（裁剪在握把斜带内）
+        x.save();
+        x.beginPath();
+        [
+            [-8.0, 1.8],
+            [-10.35, -9.1],
+            [-4.85, -8.6],
+            [-3.15, -1.2]
+        ].forEach(([a, b], i) => {
+            const [u, v] = P(a, b);
+            i ? x.lineTo(u, v) : x.moveTo(u, v);
+        });
+        x.closePath();
+        x.clip();
+        for (let gy = -9.6; gy < 1.9; gy += .185)
+            for (let gx = -10.5; gx < -3; gx += .185) {
+                if (gx > -7.9 && gx < -5.1 && gy > -3.6 && gy < -.6) continue; // logo 光面区
+                const [a, b] = P(gx, gy);
+                x.fillStyle = 'rgba(0,0,0,.5)';
+                x.beginPath();
+                x.arc(a, b, .052 * S, 0, 7);
+                x.fill();
+                x.fillStyle = 'rgba(196,204,212,.13)';
+                x.beginPath();
+                x.arc(a - .8, b - .8, .038 * S, 0, 7);
+                x.fill();
+            }
+        x.restore();
+        // 光面区 + GLOCK 圆标
+        const [a, b] = P(-6.5, -2.1), r = .85 * S;
+        x.save();
+        x.translate(a, b);
+        x.strokeStyle = 'rgba(0,0,0,.5)';
+        x.lineWidth = r * .16;
+        x.beginPath();
+        x.arc(0, 0, r, 0, 7);
+        x.stroke();
+        x.strokeStyle = 'rgba(178,188,198,.42)';
+        x.lineWidth = r * .07;
+        x.beginPath();
+        x.arc(0, 0, r * .87, 0, 7);
+        x.stroke();
+        x.fillStyle = 'rgba(190,200,210,.5)';
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.font = `italic 700 ${r*.52}px Arial`;
+        x.fillText('GLOCK', 0, -r * .05);
+        x.font = `400 ${r*.2}px Arial`;
+        x.fillStyle = 'rgba(160,172,184,.4)';
+        x.fillText('PERFECTION', 0, r * .42);
+        x.restore();
+        // 防尘盖磨砂横纹
+        x.save();
+        for (let i = 0; i < 70; i++) {
+            const gx = .6 + Math.random() * 8.6,
+                gy = .95 + Math.random() * 1.25;
+            const [u, v] = P(gx, gy);
+            x.fillStyle = `rgba(255,255,255,${Math.random()*.03})`;
+            x.fillRect(u, v, Math.random() * 14, 1);
+        }
+        x.restore();
+        // 分件线：握把背板 / 弹匣 / 导轨 / 套筒座
+        const L = (x0, y0, x1, y1, col, w) => {
+            const [a, b] = P(x0, y0), [c, d] = P(x1, y1);
+            x.strokeStyle = col;
+            x.lineWidth = w;
+            x.beginPath();
+            x.moveTo(a, b);
+            x.lineTo(c, d);
+            x.stroke();
+        };
+        L(-8.0, 1.6, -10.3, -9.1, 'rgba(0,0,0,.55)', 2);
+        L(-8.05, 1.62, -10.37, -9.1, 'rgba(170,182,194,.16)', 1);
+        L(-4.88, -8.68, -10.03, -9.55, 'rgba(0,0,0,.7)', 2);
+        L(-4.88, -8.6, -10.03, -9.47, 'rgba(180,190,200,.13)', 1);
+        L(.5, .86, 9.25, .86, 'rgba(0,0,0,.5)', 1.5);
+        L(-8.0, 2.28, 9.5, 2.28, 'rgba(0,0,0,.55)', 2);
+        L(-8.0, 2.2, 9.5, 2.2, 'rgba(190,202,214,.12)', 1);
+        // 销钉 / 控件底影
+        pin(x, P, S, -2.1, .85, .19);
+        pin(x, P, S, -4.15, -.05, .2);
+        pin(x, P, S, -1.0, 1.95, .13);
+        if (mirror) {
+            // 左侧：弹匣卡榫按钮 + 套筒止动杆
+            const [a, b] = P(-3.55, 1.05);
+            x.fillStyle = 'rgba(0,0,0,.55)';
+            x.beginPath();
+            x.ellipse(a, b, .42 * S, .27 * S, 0, 0, 7);
+            x.fill();
+            x.strokeStyle = 'rgba(150,160,170,.35)';
+            x.lineWidth = 1;
+            x.beginPath();
+            x.ellipse(a, b, .42 * S, .27 * S, 0, 0, 7);
+            x.stroke();
+            for (let i = -3; i <= 3; i++) {
+                x.strokeStyle = 'rgba(190,200,210,.28)';
+                x.beginPath();
+                x.moveTo(a + i * 4, b - 8);
+                x.lineTo(a + i * 4, b + 8);
+                x.stroke();
+            }
+            L(-4.6, 1.92, .2, 1.92, 'rgba(0,0,0,.5)', 3);
+            L(-4.6, 1.98, .2, 1.98, 'rgba(190,202,214,.2)', 1);
+            txt(x, P, S, '17', -6.6, -6.8, .3, .22, false);
+        } else {
+            const [a, b] = P(-3.3, 1.05);
+            x.fillStyle = 'rgba(0,0,0,.4)';
+            x.beginPath();
+            x.ellipse(a, b, .3 * S, .22 * S, 0, 0, 7);
+            x.fill();
+            txt(x, P, S, 'AUSTRIA', -6.6, -6.8, .24, .2, false);
+        }
+        // 导轨槽影
+        for (let gx = 2.4; gx < 8.8; gx += 1.05) {
+            L(gx, .88, gx + .42, .88, 'rgba(0,0,0,.5)', 2);
+        }
+    }
+
+    /* ---------- 轮廓（单位 cm，近似外形，非工程尺寸） ---------- */
+    const SL = [
+        [-8.4, 2.35],
+        [10.2, 2.35],
+        [10.2, 4.62],
+        [9.85, 4.9],
+        [-8.05, 4.95],
+        [-8.4, 4.6]
+    ]; // 套筒
+    const SR = [
+        [-8.4, 2.35],
+        [10.2, 2.35],
+        [10.2, 4.62],
+        [9.85, 4.9],
+        [5.5, 4.95],
+        [5.42, 4.0],
+        [1.05, 4.0],
+        [.97, 4.95],
+        [-8.05, 4.95],
+        [-8.4, 4.6]
+    ]; // 右侧带抛壳窗
+    const TOP = [
+        [-8.4, 4.3],
+        [10.2, 4.3],
+        [10.2, 4.62],
+        [9.85, 4.9],
+        [-8.05, 4.95],
+        [-8.4, 4.6]
+    ]; // 顶桥
+    const FR = [
+        [-8.0, 2.35],
+        [10.0, 2.35],
+        [10.0, 1.0],
+        [9.68, .8],
+        [.5, .8],
+        [.35, -.35],
+        [.78, -1.32],
+        [.12, -1.72],
+        [-2.45, -1.68],
+        [-3.15, -1.15],
+        [-5.0, -8.25],
+        [-4.86, -8.62],
+        [-10.05, -9.52],
+        [-10.35, -9.12],
+        [-8.0, 1.55],
+        [-7.85, 2.35]
+    ];
+    const bbS = {
+        minX: -8.4,
+        maxX: 10.2,
+        minY: 2.35,
+        maxY: 4.95,
+        w: 18.6,
+        h: 2.6
+    };
+    const bbF = {
+        minX: -10.35,
+        maxX: 10.0,
+        minY: -9.52,
+        maxY: 2.35,
+        w: 20.35,
+        h: 11.87
+    };
+
+    addTarget = slideGrp;
+    /* ---------- 套筒总成（左右壳 + 顶桥 + 前后端板 = 真实分件感） ---------- */
+    add(solid(SL, .55, .055, M.slide, -.985)); // 左壳 z:[-1.27,-.72]
+    add(solid(SR, .55, .055, M.slide, .985)); // 右壳 z:[.72,1.27]
+    add(solid(TOP, 1.42, .05, M.slide, -.56)); // 顶桥 z:[-1.27,.15]
+    // 前端面（整块带枪管孔，避免分件色块）
+    const fp = new THREE.Shape();
+    fp.moveTo(-1.27, 2.35);
+    fp.lineTo(1.27, 2.35);
+    fp.lineTo(1.27, 4.62);
+    fp.lineTo(-1.27, 4.62);
+    fp.closePath();
+    const hole = new THREE.Path();
+    hole.absarc(0, 3.72, .755, 0, Math.PI * 2, true);
+    fp.holes.push(hole);
+    const fg = new THREE.ExtrudeGeometry(fp, {
+        depth: .055,
+        bevelEnabled: false,
+        curveSegments: 32
+    });
+    fg.rotateY(Math.PI / 2);
+    const fpMat = M.slide.clone();
+    fpMat.color.setHex(0x484e55);
+    fpMat.roughness = .4;
+    const fpm = new THREE.Mesh(fg, fpMat);
+    fpm.position.x = 10.205;
+    fpm.castShadow = true;
+    add(fpm);
+    // 后端板（击针孔）
+    const bp = rrect(1.44, 2.6, .06),
+        bh = new THREE.Path();
+    bh.absarc(0, .07, .16, 0, Math.PI * 2, true);
+    bp.holes.push(bh);
+    const bg = new THREE.ExtrudeGeometry(bp, {
+        depth: .12,
+        bevelEnabled: false,
+        curveSegments: 20
+    });
+    bg.rotateY(Math.PI / 2);
+    const bpm = new THREE.Mesh(bg, M.slideEdge);
+    bpm.position.set(-8.4, 3.65, 0);
+    add(bpm);
+    add(cyl(.15, .06, M.dark, -8.47, 3.72, 0));
+    // 套筒侧面贴花（左：GLOCK 铭文 / 右：序列号，UV 按观察面镜像）
+    add(decal(SL, bbS, -1.2725, slideArt, dmat(.3, .7), true));
+    add(decal(SR, bbS, 1.2725, slideArt, dmat(.3, .7), false));
+
+    /* ---------- 枪管 / 弹膛 / 抛壳窗内部 ---------- */
+    add(box(4.6, 1.85, 1.44, M.dark, 3.1, 3.32, 0)); // 内腔暗衬
+    add(rbox(2.75, 1.72, 1.4, M.steelDk, 2.3, 3.88, 0, .1)); // 弹膛方块
+    add(box(2.7, .02, 1.35, M.steel, 2.3, 4.745, 0)); // 弹膛顶亮面
+    add(cyl(.72, 6.73, M.barrel, 6.915, 3.72, 0)); // 枪管
+    add(cyl(.735, .12, M.steel, 10.22, 3.72, 0)); // 枪口外缘
+    // 弹膛顶面刻字
+    const chT = tex((() => {
+        const c = cvt(512, 128),
+            x = c.getContext('2d');
+        x.fillStyle = '#3e444a';
+        x.fillRect(0, 0, 512, 128);
+        x.fillStyle = 'rgba(222,230,238,.78)';
+        x.font = 'bold 44px Arial';
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        x.fillText('9×19  ·  AUSTRIA', 256, 66);
+        return c;
+    })());
+    const chMat = new THREE.MeshStandardMaterial({
+        map: chT,
+        metalness: .9,
+        roughness: .3,
+        envMapIntensity: 1.1
+    });
+    add(plane(2.4, .5, chMat, 2.3, 4.756, .42, 0).rotateX(-Math.PI / 2));
+    // 枪口端面（多边形膛线 + 内孔）
+    const mz = tex((() => {
+        const c = cvt(256, 256),
+            x = c.getContext('2d');
+        x.clearRect(0, 0, 256, 256);
+        x.fillStyle = '#9aa2a8';
+        x.fillRect(0, 0, 256, 256);
+        let g = x.createRadialGradient(112, 108, 10, 128, 128, 120);
+        g.addColorStop(0, '#090b0d');
+        g.addColorStop(.72, '#14181c');
+        g.addColorStop(.82, '#3d444a');
+        g.addColorStop(1, '#8d949a');
+        x.fillStyle = g;
+        x.beginPath();
+        x.arc(128, 128, 118, 0, 7);
+        x.fill();
+        x.strokeStyle = 'rgba(200,210,220,.25)';
+        x.lineWidth = 3;
+        x.beginPath();
+        x.arc(128, 128, 104, 0, 7);
+        x.stroke();
+        x.fillStyle = '#050607';
+        x.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const a = i * Math.PI / 3 + Math.PI / 6;
+            const px = 128 + 78 * Math.cos(a),
+                py = 128 + 78 * Math.sin(a);
+            i ? x.lineTo(px, py) : x.moveTo(px, py);
+        }
+        x.closePath();
+        x.fill();
+        return c;
+    })());
+    const mzM = new THREE.MeshStandardMaterial({
+        map: mz,
+        metalness: .85,
+        roughness: .35
+    });
+    const muzzle = new THREE.Mesh(new THREE.CircleGeometry(.72, 48), mzM);
+    muzzle.position.set(10.285, 3.72, 0);
+    muzzle.rotation.y = Math.PI / 2;
+    add(muzzle);
+    // 抽壳钩
+    add(rbox(.42, .82, .34, M.steelDk, 1.18, 4.36, .86, .04));
+    add(box(.06, .72, .03, M.steel, 1.0, 4.36, 1.04));
+
+    addTarget = gun;
+    /* ---------- 底把 / 握把 ---------- */
+    add(solid(FR, 2.66, .1, M.frame, 0));
+    add(decal(FR, bbF, -1.3325, (x, P, S) => frameArt(x, P, S, true), dmat(.72, .06), true));
+    add(decal(FR, bbF, 1.3325, (x, P, S) => frameArt(x, P, S, false), dmat(.72, .06), false));
+    // 弹匣底板（随握把倾角）
+    const magMat = new THREE.MeshStandardMaterial({
+        color: 0x14171a,
+        metalness: .02,
+        roughness: .88,
+        envMapIntensity: .35
+    });
+    const mag = new THREE.Group();
+    mag.rotation.z = .172;
+    mag.position.set(-7.455, -9.07, 0);
+    const mg = rbox(5.35, .42, 2.9, magMat, 0, 0, 0, .12);
+    mag.add(mg);
+    const mg2 = rbox(5.05, .05, 2.7, magMat, 0, .22, 0, .04);
+    mag.add(mg2);
+    add(mag);
+    // 扳机 + 扳机保险
+    add(solid([
+        [-2.7, .5],
+        [-1.8, .5],
+        [-1.95, 1.6],
+        [-2.5, 1.62]
+    ], .55, .04, M.slideEdge, 0));
+    add(rbox(.16, .66, .54, M.steelDk, -2.02, 1.12, 0, .04));
+    // 皮卡汀尼导轨齿
+    for (let gx = 2.5; gx < 8.9; gx += 1.05) add(rbox(.42, .16, 2.05, M.poly, gx, .76, 0, .03));
+    // 控件：套筒止动 / 分解杆 / 弹匣卡榫 / 销钉
+    add(rbox(4.5, .16, .12, M.steelDk, -2.2, 1.94, -1.38, .03));
+    add(rbox(.9, .2, .14, M.steelDk, -.9, 1.94, -1.4, .04));
+    add(rbox(.9, .2, .14, M.steelDk, -.9, 1.94, 1.4, .04));
+    add(rbox(.85, .5, .2, M.poly, -3.55, 1.06, -1.42, .08));
+    add(cyl(.17, 3.0, M.steelDk, -2.1, .85, 0, 'z'));
+    add(cyl(.18, 3.0, M.steelDk, -4.15, -.05, 0, 'z'));
+
+    /* ---------- 准星 / 照门（白点 + 白 U） ---------- */
+    const fs = [
+        [8.2, 4.93],
+        [8.95, 4.93],
+        [8.92, 5.28],
+        [8.36, 5.42],
+        [8.2, 5.42]
+    ];
+    add(solid(fs, .82, .03, M.sight, 0));
+    const dot = tex((() => {
+        const c = cvt(128, 128),
+            x = c.getContext('2d');
+        x.clearRect(0, 0, 128, 128);
+        x.fillStyle = '#0b0d0f';
+        x.beginPath();
+        x.arc(64, 64, 44, 0, 7);
+        x.fill();
+        x.fillStyle = '#f4f7f4';
+        x.beginPath();
+        x.arc(64, 64, 33, 0, 7);
+        x.fill();
+        return c;
+    })());
+    add(plane(.46, .46, new THREE.MeshBasicMaterial({
+        map: dot,
+        transparent: true
+    }), 8.19, 5.15, 0, -Math.PI / 2));
+    const rs = [
+        [-7.8, 4.93],
+        [-6.8, 4.93],
+        [-6.9, 5.38],
+        [-7.7, 5.38]
+    ];
+    add(solid(rs, .48, .03, M.sight, -.62));
+    add(solid(rs, .48, .03, M.sight, .62));
+    const uTex = tex((() => {
+        const c = cvt(256, 256),
+            x = c.getContext('2d');
+        x.clearRect(0, 0, 256, 256);
+        x.strokeStyle = '#eef2ee';
+        x.lineWidth = 17;
+        x.lineJoin = 'round';
+        x.beginPath();
+        x.moveTo(48, 46);
+        x.lineTo(48, 190);
+        x.lineTo(208, 190);
+        x.lineTo(208, 46);
+        x.stroke();
+        return c;
+    })());
+    add(plane(1.28, .86, new THREE.MeshBasicMaterial({
+        map: uTex,
+        transparent: true
+    }), -7.79, 5.12, 0, -Math.PI / 2));
+
+    return { group: gun, slide: slideGrp };
+}
+
+function rawAK47(){
+    /* ---------- 程序化材质 ---------- */
+    const hash = (x, y) => {
+        let h = (x * 374761393 + y * 668265263) | 0;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967295
+    };
+
+    function woodTex() {
+        const c = document.createElement('canvas');
+        c.width = c.height = 512;
+        const g = c.getContext('2d'),
+            im = g.createImageData(512, 512),
+            d = im.data;
+        for (let y = 0; y < 512; y++)
+            for (let x = 0; x < 512; x++) {
+                const w = y + 7 * Math.sin(x * .007) + 3 * Math.sin(x * .023 + 1.7) + 1.6 * Math.sin(x * .071 + y * .006);
+                let v = .52 + .095 * Math.sin(w * .19) + .055 * Math.sin(w * .61) + .03 * Math.sin(w * 1.7) + .06 * (hash(x, y) - .5) + .05 * (hash(x >> 3, y >> 1) - .5);
+                v = Math.max(0, Math.min(1, v));
+                const i = (y * 512 + x) * 4;
+                d[i] = 96 + v * 72;
+                d[i + 1] = 55 + v * 48;
+                d[i + 2] = 28 + v * 30;
+                d[i + 3] = 255;
+            }
+        g.putImageData(im, 0, 0);
+        const t = new THREE.CanvasTexture(c);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(4, 4);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return t;
+    }
+
+    function noiseTex() {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const g = c.getContext('2d');
+        const im = g.createImageData(128, 128);
+        for (let i = 0; i < 16384; i++) {
+            const v = 165 + Math.random() * 90;
+            im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v;
+            im.data[i * 4 + 3] = 255;
+        }
+        g.putImageData(im, 0, 0);
+        const t = new THREE.CanvasTexture(c);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(6, 6);
+        return t;
+    }
+
+    function txtTex(w, h, fn) {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        fn(c.getContext('2d'), w, h);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    }
+    const wt = woodTex(),
+        wt2 = wt.clone();
+    wt2.rotation = Math.PI / 2;
+    wt2.center.set(.5, .5);
+    wt2.needsUpdate = true;
+    const WD = new THREE.MeshStandardMaterial({
+        map: wt,
+        bumpMap: wt,
+        bumpScale: .0014,
+        roughness: .56,
+        metalness: 0,
+        envMapIntensity: .35
+    });
+    const WD2 = WD.clone();
+    WD2.map = WD2.bumpMap = wt2; // 圆柱件：木纹转 90° 顺枪身
+    const ST = new THREE.MeshStandardMaterial({
+        color: 0x3b4147,
+        metalness: .88,
+        roughness: .52,
+        envMapIntensity: 1.05,
+        roughnessMap: noiseTex()
+    });
+    const STL = new THREE.MeshStandardMaterial({
+        color: 0x545b61,
+        metalness: .9,
+        roughness: .3,
+        envMapIntensity: 1.2
+    });
+    const BL = new THREE.MeshStandardMaterial({
+        color: 0x1d2126,
+        metalness: .93,
+        roughness: .27,
+        envMapIntensity: 1.1
+    });
+    const DK = new THREE.MeshStandardMaterial({
+        color: 0x0c0e10,
+        metalness: .45,
+        roughness: .75
+    });
+    const STR = new THREE.MeshStandardMaterial({
+        color: 0x4c5258,
+        metalness: .85,
+        roughness: .42,
+        envMapIntensity: 1.0
+    });
+    const MAG = new THREE.MeshStandardMaterial({
+        color: 0x484c52,
+        metalness: .8,
+        roughness: .52,
+        roughnessMap: noiseTex()
+    });
+    const BLK = new THREE.MeshBasicMaterial({
+        color: 0x050607
+    });
+
+    /* ---------- 几何小工具 ---------- */
+    const G = new THREE.Group();
+    G.scale.setScalar(.88);
+    /* G is the root */
+    function A(g, m, p = [0, 0, 0], r = [0, 0, 0]) {
+        const o = new THREE.Mesh(g, m);
+        o.position.set(...p);
+        o.rotation.set(...r);
+        o.castShadow = o.receiveShadow = true;
+        G.add(o);
+        return o;
+    }
+    const RB = (w, h, d, m, p, r = [0, 0, 0], rad = .002) => A(new RBG(w, h, d, 2, rad), m, p, r);
+    const CY = (rt, rb, h, m, p, r = [0, 0, 0], s = 20) => A(new THREE.CylinderGeometry(rt, rb, h, s), m, p, r);
+    const SP = (r, m, p) => A(new THREE.SphereGeometry(r, 16, 12), m, p);
+    const TU = (pts, rad, m, n = 40) => A(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(q => new THREE.Vector3(...q))), n, rad, 6, false), m);
+
+    function EX(sh, d, m, z = 0, b = .0015) {
+        const g = new THREE.ExtrudeGeometry(sh, {
+            depth: d,
+            bevelEnabled: true,
+            bevelSize: b,
+            bevelThickness: b,
+            bevelSegments: 2,
+            curveSegments: 14
+        });
+        g.translate(0, 0, -d / 2);
+        return A(g, m, [0, 0, z]);
+    }
+    const S = f => {
+        const s = new THREE.Shape();
+        f(s);
+        return s;
+    };
+    const Z = Math.PI / 2;
+
+    /* ---------- 机匣 / 机匣盖 / 抛壳口 / 拉机柄 ---------- */
+    RB(.280, .098, .034, ST, [.080, .028, 0], [0, 0, 0], .003);
+    RB(.240, .009, .037, ST, [.100, .0805, 0], [0, 0, 0], .0025);
+    [.012, .095, .185].forEach(x => RB(.005, .003, .038, ST, [x, .0865, 0], [0, 0, 0], .001));
+    RB(.022, .088, .036, ST, [-.068, .028, 0], [0, 0, 0], .002);
+    RB(.082, .024, .0016, DK, [.150, .055, .0176], [0, 0, 0], .0004);
+    RB(.078, .020, .0008, BLK, [.150, .055, .0185], [0, 0, 0], .0003);
+    RB(.082, .002, .002, STL, [.150, .0675, .0178], [0, 0, 0], .0004);
+    CY(.0035, .0035, .028, ST, [.165, .055, .034], [Z, 0, 0], 12);
+    SP(.0075, ST, [.165, .055, .050]);
+    RB(.014, .008, .004, STL, [.156, .055, .051], [0, 0, 0], .001);
+    // 快慢机大拨片（AK 最标志性的右侧轮廓）
+    EX(S(s => {
+        s.moveTo(-.004, .034);
+        s.lineTo(.070, .034);
+        s.quadraticCurveTo(.092, .032, .096, .022);
+        s.quadraticCurveTo(.098, .012, .086, .008);
+        s.lineTo(.078, -.006);
+        s.lineTo(.068, -.004);
+        s.lineTo(.074, .012);
+        s.lineTo(.012, .019);
+        s.quadraticCurveTo(-.006, .022, -.004, .034);
+    }), .004, STL, .0192, .0008);
+    CY(.004, .004, .002, BL, [.004, .026, .021], [Z, 0, 0], 10);
+    // 机匣上的俄文快慢机刻印
+    const mark = txtTex(512, 128, (g, w, h) => {
+        g.clearRect(0, 0, w, h);
+        g.fillStyle = '#0a0b0d';
+        g.font = 'bold 58px Arial';
+        g.fillText('АВ', 18, 60);
+        g.fillText('ОД', 150, 60);
+        g.font = 'bold 46px Arial';
+        g.fillText('П', 300, 58);
+        g.fillRect(24, 78, 90, 4);
+        g.fillRect(156, 78, 90, 4);
+    });
+    A(new THREE.PlaneGeometry(.085, .019), new THREE.MeshBasicMaterial({
+        map: mark,
+        transparent: true,
+        opacity: .7,
+        depthWrite: false
+    }), [.040, .050, .0179]);
+    // 铆钉
+    [
+        [-.045, .055],
+        [.010, .068],
+        [.205, .062],
+        [.205, -.008],
+        [.125, -.012],
+        [-.045, -.008]
+    ].forEach(([x, y]) => [-1, 1].forEach(k => CY(.0026, .0026, .0012, BL, [x, y, k * .0178], [Z, 0, 0], 10)));
+
+    /* ---------- 弹匣井 / 30 发弧形钢弹匣 ---------- */
+    RB(.090, .024, .035, ST, [.088, -.030, 0], [0, 0, 0], .002);
+    RB(.014, .028, .034, ST, [.140, -.036, 0], [0, 0, .12], .002);
+    EX(S(s => {
+        s.moveTo(.050, -.040);
+        s.lineTo(.126, -.040);
+        s.bezierCurveTo(.152, -.105, .180, -.175, .190, -.228);
+        s.quadraticCurveTo(.192, -.240, .182, -.240);
+        s.lineTo(.114, -.240);
+        s.quadraticCurveTo(.104, -.240, .104, -.228);
+        s.bezierCurveTo(.098, -.175, .068, -.105, .050, -.040);
+    }), .028, MAG, 0, .0018);
+    // 弹匣纵向冲压加强筋（两侧各两条，顺弧度）
+    [-1, 1].forEach(k => [.072, .104].forEach(x0 =>
+        TU([
+                [x0, -.055],
+                [x0 + .008, -.105],
+                [x0 + .022, -.165],
+                [x0 + .038, -.215],
+                [x0 + .042, -.230]
+            ]
+            .map(p => [p[0], p[1], k * .0153]), .0016, STL, 24)));
+    RB(.078, .006, .030, ST, [.148, -.241, 0], [0, 0, -.02], .0015);
+
+    /* ---------- 扳机护圈 / 扳机 / 弹匣卡榫 ---------- */
+    const ring = S(s => {
+        s.moveTo(-.028, -.024);
+        s.lineTo(.052, -.024);
+        s.quadraticCurveTo(.060, -.026, .060, -.036);
+        s.lineTo(.058, -.066);
+        s.quadraticCurveTo(.056, -.078, .044, -.078);
+        s.lineTo(-.018, -.078);
+        s.quadraticCurveTo(-.030, -.078, -.030, -.064);
+        s.lineTo(-.030, -.036);
+        s.quadraticCurveTo(-.030, -.024, -.028, -.024);
+        const h = new THREE.Path();
+        h.moveTo(-.022, -.032);
+        h.lineTo(.046, -.032);
+        h.quadraticCurveTo(.052, -.032, .052, -.038);
+        h.lineTo(.050, -.064);
+        h.quadraticCurveTo(.048, -.070, .042, -.070);
+        h.lineTo(-.014, -.070);
+        h.quadraticCurveTo(-.022, -.070, -.022, -.062);
+        h.lineTo(-.022, -.038);
+        h.quadraticCurveTo(-.022, -.032, -.022, -.032);
+        s.holes.push(h);
+    });
+    EX(ring, .012, STR, 0, .001);
+    EX(S(s => {
+        s.moveTo(.010, -.028);
+        s.quadraticCurveTo(.020, -.042, .014, -.058);
+        s.quadraticCurveTo(.010, -.066, .004, -.058);
+        s.quadraticCurveTo(.000, -.044, .004, -.028);
+    }), .007, BL, 0, .0008);
+    EX(S(s => {
+        s.moveTo(.132, -.030);
+        s.lineTo(.146, -.030);
+        s.lineTo(.150, -.062);
+        s.quadraticCurveTo(.148, -.070, .142, -.068);
+        s.lineTo(.134, -.046);
+    }), .016, STR, 0, .001);
+
+    /* ---------- 木握把 ---------- */
+    EX(S(s => {
+        s.moveTo(-.048, -.018);
+        s.lineTo(-.012, -.018);
+        s.lineTo(-.016, -.040);
+        s.quadraticCurveTo(-.022, -.060, -.020, -.078);
+        s.quadraticCurveTo(-.018, -.098, -.028, -.118);
+        s.quadraticCurveTo(-.036, -.136, -.054, -.138);
+        s.quadraticCurveTo(-.070, -.136, -.070, -.116);
+        s.lineTo(-.056, -.040);
+        s.quadraticCurveTo(-.052, -.018, -.048, -.018);
+    }), .031, WD2, 0, .0032);
+    RB(.034, .006, .032, ST, [-.052, -.136, 0], [0, 0, .06], .002);
+    CY(.0035, .0035, .001, BL, [-.052, -.139, .016], [Z, 0, 0], 10);
+
+    /* ---------- 木枪托（第 3 型固定托） ---------- */
+    EX(S(s => {
+        s.moveTo(-.075, .062);
+        s.lineTo(-.100, .058);
+        s.quadraticCurveTo(-.140, .052, -.190, .044);
+        s.lineTo(-.300, .028);
+        s.quadraticCurveTo(-.322, .024, -.326, .010);
+        s.lineTo(-.336, -.058);
+        s.quadraticCurveTo(-.338, -.072, -.322, -.074);
+        s.lineTo(-.230, -.078);
+        s.quadraticCurveTo(-.170, -.080, -.140, -.072);
+        s.quadraticCurveTo(-.112, -.064, -.100, -.046);
+        s.quadraticCurveTo(-.092, -.032, -.078, -.024);
+        s.lineTo(-.075, -.020);
+        s.lineTo(-.075, .062);
+    }), .039, WD, 0, .004);
+    RB(.022, .086, .040, ST, [-.070, .020, 0], [0, 0, 0], .002);
+    RB(.008, .092, .041, ST, [-.335, -.024, 0], [0, 0, -.10], .002);
+    RB(.003, .094, .042, STL, [-.339, -.024, 0], [0, 0, -.10], .001);
+    CY(.009, .009, .002, STL, [-.342, -.024, 0], [0, 0, Z], 16); // 托底附件仓盖
+    [-.050, .004].forEach(y => CY(.0028, .0028, .001, BL, [-.340, y, .016], [Z, 0, 0], 10));
+    [-1, 1].forEach(k => CY(.0035, .0035, .0012, BL, [-.105, .010, k * .021], [Z, 0, 0], 10));
+    RB(.018, .010, .016, ST, [-.302, -.072, 0]);
+    A(new THREE.TorusGeometry(.009, .0018, 8, 20), ST, [-.302, -.081, 0]);
+
+    /* ---------- 枪管 / 枪口装置 / 通条 ---------- */
+    CY(.0125, .0125, .038, ST, [.235, .045, 0], [0, 0, Z], 20);
+    CY(.0085, .0085, .250, BL, [.375, .045, 0], [0, 0, Z], 20);
+    CY(.0075, .0075, .115, BL, [.5575, .045, 0], [0, 0, Z], 20);
+    CY(.0095, .0092, .026, ST, [.628, .045, 0], [0, 0, Z], 16);
+    CY(.0092, .0092, .004, DK, [.642, .045, 0], [0, 0, Z + .22], 16); // 斜切枪口
+    CY(.0040, .0040, .001, BLK, [.643, .045, 0], [0, 0, Z], 16);
+    CY(.0022, .0022, .180, ST, [.515, .012, 0], [0, 0, Z], 10); // 通条
+    RB(.012, .016, .018, ST, [.492, .014, 0], [0, 0, 0], .001);
+
+    /* ---------- 下护木（带手指槽）/ 上护木 / 导气管 ---------- */
+    [
+        [.232, .270, .0225],
+        [.270, .275, .0210],
+        [.275, .317, .0225],
+        [.317, .322, .0210],
+        [.322, .364, .0225],
+        [.364, .369, .0210],
+        [.369, .425, .0225]
+    ].forEach(([a, b, r]) =>
+        CY(r, r, b - a, WD2, [(a + b) / 2, .028, 0], [0, 0, Z], 24));
+    RB(.020, .050, .046, ST, [.225, .028, 0], [0, 0, 0], .002);
+    RB(.014, .050, .050, ST, [.430, .029, 0], [0, 0, .15], .002);
+    RB(.018, .024, .006, STL, [.226, .030, .026], [0, 0, .4], .001);
+    CY(.007, .007, .245, ST, [.365, .058, 0], [0, 0, Z], 16);
+    EX(S(s => {
+        s.moveTo(.245, .064);
+        s.lineTo(.470, .064);
+        s.quadraticCurveTo(.478, .064, .478, .070);
+        s.lineTo(.478, .072);
+        s.quadraticCurveTo(.478, .078, .468, .078);
+        s.lineTo(.252, .078);
+        s.quadraticCurveTo(.242, .078, .242, .072);
+        s.lineTo(.242, .070);
+        s.quadraticCurveTo(.242, .064, .245, .064);
+    }), .027, WD, 0, .002);
+    RB(.008, .015, .029, ST, [.246, .071, 0], [0, 0, 0], .001);
+    RB(.008, .015, .029, ST, [.474, .071, 0], [0, 0, 0], .001);
+
+    /* ---------- 表尺座 / 表尺（带缺口照门）/ 分划数字 ---------- */
+    RB(.032, .030, .038, ST, [.232, .070, 0], [0, 0, 0], .002);
+
+    // 照门叶片：顶部开口，做成真正的 U 形缺口，视线可从缺口穿过
+    // 叶片 y 范围 .082~.105，缺口底部 y=.097（与前准星尖同高），缺口宽 5mm
+    const leafShape = S(s => {
+        s.moveTo(-.014, 0);
+        s.lineTo(-.014, .023);
+        s.lineTo(-.0035, .023);
+        s.lineTo(-.0025, .015);
+        s.lineTo(.0025, .015);
+        s.lineTo(.0035, .023);
+        s.lineTo(.014, .023);
+        s.lineTo(.014, 0);
+        s.closePath();
+    });
+    const rearLeaf = EX(leafShape, .011, ST, 0, .0008);
+    rearLeaf.position.set(.232, .082, 0);
+    rearLeaf.rotation.y = Z; // 挤出方向转为沿枪管轴向
+
+    // 缺口两侧护耳（在瞄准轴线之外，不遮挡视野）
+    RB(.008, .007, .008, ST, [.231, .104, -.011], [0, 0, -.12], .001);
+    RB(.008, .007, .008, ST, [.231, .104, .011], [0, 0, -.12], .001);
+
+    // 分划数字：贴在照门背面缺口下方（y .085~.096），完全低于瞄准线
+    const scale = txtTex(256, 128, (g, w, h) => {
+        g.clearRect(0, 0, w, h);
+        g.fillStyle = '#12161a';
+        for (let i = 0; i < 4; i++) {
+            const x = 26 + i * 58;
+            g.fillRect(x, 58, 3, 44);
+            g.font = 'bold 30px Arial';
+            g.fillText(String(i + 1), x - 8, 48);
+        }
+    });
+    A(new THREE.PlaneGeometry(.022, .010),
+        new THREE.MeshBasicMaterial({
+            map: scale,
+            transparent: true,
+            depthWrite: false
+        }),
+        [.2262, .0915, 0], [0, -Z, 0]);
+
+    /* ---------- 导气箍 / 准星护圈 / 前背带环 ---------- */
+    RB(.036, .052, .038, ST, [.492, .045, 0], [0, 0, 0], .003);
+    RB(.030, .020, .030, ST, [.492, .075, 0], [0, 0, 0], .002);
+    CY(.005, .005, .026, ST, [.478, .058, 0], [0, 0, Z + .5], 12);
+    const ear = EX(S(s => {
+        s.absarc(0, 0, .0220, Math.PI, 2 * Math.PI, false);
+        s.absarc(0, 0, .0180, 2 * Math.PI, Math.PI, true);
+    }), .020, ST, 0, .0008);
+    ear.position.set(.492, .098, 0);
+    ear.rotation.y = Z;
+    CY(.0032, .0032, .004, ST, [.492, .078, 0], [0, 0, 0], 12);
+    CY(.0013, .0018, .020, BL, [.492, .087, 0], [0, 0, 0], 10);
+    RB(.014, .014, .006, ST, [.492, .030, -.024]);
+    A(new THREE.TorusGeometry(.0075, .0016, 8, 16), ST, [.492, .021, -.026]);
+
+    return G;
+}
+
+function rawAA12(){
+const M = {
+    body: new THREE.MeshStandardMaterial({
+        color: 0x2b3036,
+        metalness: 0.88,
+        roughness: 0.42
+    }),
+    dark: new THREE.MeshStandardMaterial({
+        color: 0x15181b,
+        metalness: 0.62,
+        roughness: 0.55
+    }),
+    poly: new THREE.MeshStandardMaterial({
+        color: 0x101214,
+        metalness: 0.12,
+        roughness: 0.84
+    }),
+    steel: new THREE.MeshStandardMaterial({
+        color: 0x545b63,
+        metalness: 1.00,
+        roughness: 0.20
+    }),
+    bore: new THREE.MeshStandardMaterial({
+        color: 0x08090a,
+        metalness: 0.40,
+        roughness: 0.92
+    }),
+    rubber: new THREE.MeshStandardMaterial({
+        color: 0x0b0c0d,
+        metalness: 0.00,
+        roughness: 0.96
+    })
+};
+
+/* ================= 建模工具 ================= */
+const gun = new THREE.Group();
+/* gun is the root */
+
+const RB = (w, h, d, r) => new RBG(w, h, d, 4, r);
+
+function add(geo, mat, pos, rot) {
+    const m = new THREE.Mesh(geo, mat);
+    if (pos) m.position.set(pos[0], pos[1], pos[2]);
+    if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
+    gun.add(m);
+    return m;
+}
+const cyl = (rt, rb, h, seg = 24) => new THREE.CylinderGeometry(rt, rb, h, seg);
+
+/* ================= 机匣主体 ================= */
+add(RB(27, 7.6, 6.0, 0.70), M.body, [-6.5, 0, 0]); // 上机匣
+add(RB(19, 3.2, 5.2, 0.55), M.dark, [-10, -4.4, 0]); // 下机匣
+
+// 机匣侧面导槽
+add(RB(21, 0.55, 0.45, 0.15), M.body, [-6.5, 2.35, 3.0]);
+add(RB(21, 0.55, 0.45, 0.15), M.body, [-6.5, 2.35, -3.0]);
+
+// 抛壳口（右侧凹陷）
+add(RB(9.5, 3.4, 0.7, 0.15), M.bore, [-3.2, 0.8, 2.85]);
+add(RB(10.0, 0.5, 0.5, 0.12), M.body, [-3.2, 2.7, 2.95]);
+
+// 左侧快慢机
+add(cyl(1.05, 1.05, 0.55, 20), M.dark, [-11.5, -1.2, -3.05], [Math.PI / 2, 0, 0]);
+add(RB(2.6, 0.7, 0.5, 0.15), M.dark, [-12.4, -0.55, -3.25], [0, 0, 0.35]);
+
+// 机匣销钉
+[
+    [-17, -1.6],
+    [-17, 1.6],
+    [-1, -1.6],
+    [-1, 1.6]
+].forEach(([px, py]) => {
+    add(cyl(0.42, 0.42, 0.45, 12), M.steel, [px, py, 3.02], [Math.PI / 2, 0, 0]);
+    add(cyl(0.42, 0.42, 0.45, 12), M.steel, [px, py, -3.02], [Math.PI / 2, 0, 0]);
+});
+
+/* ================= 顶部皮卡汀尼导轨 ================= */
+add(RB(26, 0.9, 4.4, 0.18), M.dark, [-6.5, 4.25, 0]);
+for (let i = 0; i < 13; i++) {
+    add(RB(1.0, 0.72, 4.65, 0.14), M.dark, [-19 + i * 2, 4.58, 0]);
+}
+// 机械照门
+add(RB(2.4, 1.5, 3.8, 0.25), M.dark, [-17, 5.6, 0]);
+add(RB(0.7, 0.9, 1.1, 0.12), M.bore, [-17, 6.5, 0]);
+// 准星
+add(RB(1.3, 2.6, 1.1, 0.22), M.dark, [4.5, 5.9, 0]);
+add(RB(0.45, 1.1, 0.45, 0.1), M.steel, [4.5, 7.3, 0]);
+
+/* ================= 前节 / 枪管 ================= */
+add(RB(6.2, 5.4, 5.4, 0.55), M.body, [8, 1.1, 0]); // 枪管座
+
+add(cyl(1.35, 1.35, 32, 28), M.steel, [19, 1.9, 0], [0, 0, Math.PI / 2]); // 枪管
+
+// 枪管护罩（带透气孔的镂空筒）
+(function() {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fff';
+    x.fillRect(0, 0, 512, 256);
+    x.fillStyle = '#000';
+    const cols = 12,
+        rows = 8;
+    for (let r = 0; r < rows; r++) {
+        for (let i = 0; i < cols; i++) {
+            const px = (i + (r % 2 ? 0.5 : 0)) * 512 / cols + 512 / (cols * 2);
+            const py = 256 / rows * (r + 0.5);
+            x.beginPath();
+            x.ellipse(px, py, 16, 8, 0, 0, 7);
+            x.fill();
+        }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+
+    const mat = new THREE.MeshStandardMaterial({
+        color: 0x34393f,
+        metalness: 0.92,
+        roughness: 0.34,
+        alphaMap: tex,
+        alphaTest: 0.5,
+        side: THREE.DoubleSide
+    });
+    add(new THREE.CylinderGeometry(3.1, 3.1, 19, 48, 1, true), mat, [18, 1.9, 0], [0, 0, Math.PI / 2]);
+})();
+
+// 护罩前后箍圈
+[8.6, 27.4].forEach(x => {
+    add(new THREE.TorusGeometry(3.12, 0.42, 10, 44), M.body, [x, 1.9, 0], [0, Math.PI / 2, 0]);
+});
+
+// 枪口制退器
+add(cyl(2.05, 2.05, 4.0, 26), M.steel, [36, 1.9, 0], [0, 0, Math.PI / 2]);
+add(cyl(2.15, 2.15, 0.55, 26), M.body, [34.6, 1.9, 0], [0, 0, Math.PI / 2]);
+add(cyl(2.15, 2.15, 0.55, 26), M.body, [37.4, 1.9, 0], [0, 0, Math.PI / 2]);
+// 制退器侧开槽
+[-1, 1].forEach(s => {
+    add(RB(2.2, 0.8, 1.4, 0.15), M.bore, [36, 1.9, s * 2.0]);
+});
+// 枪口内壁
+add(cyl(1.36, 1.36, 0.4, 26), M.bore, [38.0, 1.9, 0], [0, 0, Math.PI / 2]);
+
+/* ================= 弹鼓 ================= */
+const DX = 13,
+    DY = -8.6; // 弹鼓中心
+add(cyl(6.6, 6.6, 5.6, 56), M.dark, [DX, DY, 0], [0, 0, Math.PI / 2]); // 鼓身
+add(cyl(6.75, 6.75, 0.7, 56), M.body, [DX + 2.9, DY, 0], [0, 0, Math.PI / 2]); // 前盖
+add(cyl(6.75, 6.75, 0.7, 56), M.body, [DX - 2.9, DY, 0], [0, 0, Math.PI / 2]); // 后盖
+
+// 前盖同心细节
+[5.45, 3.3].forEach(r => {
+    add(new THREE.TorusGeometry(r, 0.22, 8, 56), M.body, [DX + 3.3, DY, 0], [0, Math.PI / 2, 0]);
+});
+add(cyl(2.2, 2.2, 0.9, 32), M.steel, [DX + 3.35, DY, 0], [0, 0, Math.PI / 2]); // 中心轴
+add(cyl(0.9, 0.9, 1.1, 20), M.bore, [DX + 3.6, DY, 0], [0, 0, Math.PI / 2]);
+
+// 前盖螺栓
+for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
+    add(cyl(0.32, 0.32, 0.5, 10), M.steel,
+        [DX + 3.2, DY + Math.sin(a) * 4.35, Math.cos(a) * 4.35], [0, 0, Math.PI / 2]);
+}
+
+// 弹鼓与机匣的连接支架
+add(RB(9.5, 4.2, 3.8, 0.5), M.dark, [9.5, -5.4, 0]);
+add(RB(3.0, 2.4, 6.4, 0.35), M.body, [11, -6.6, 0]);
+
+/* ================= 手枪握把 ================= */
+const grip = add(RB(4.8, 10, 4.4, 1.0), M.poly, [-14.6, -8.0, 0]);
+grip.rotation.z = -0.30;
+// 握把底盖
+const cap = add(RB(4.9, 1.0, 4.5, 0.35), M.dark, [-16.05, -12.7, 0]);
+cap.rotation.z = -0.30;
+// 防滑纹
+for (let i = 0; i < 5; i++) {
+    const g2 = add(RB(4.2, 0.35, 4.55, 0.12), M.dark, [-14.2 - i * 0.55, -5.6 - i * 1.5, 0]);
+    g2.rotation.z = -0.30;
+}
+
+/* ================= 扳机护圈 & 扳机 ================= */
+add(new THREE.TorusGeometry(2.7, 0.42, 10, 32, Math.PI), M.body, [-9.6, -4.2, 0], [0, 0, Math.PI]);
+add(RB(1.0, 2.7, 1.0, 0.28), M.steel, [-9.9, -4.7, 0]);
+add(RB(0.5, 1.4, 0.5, 0.12), M.dark, [-9.9, -3.6, 0]);
+
+/* ================= 骨架枪托 ================= */
+add(cyl(0.95, 0.95, 15, 20), M.body, [-27.5, 2.3, 0], [0, 0, Math.PI / 2]); // 上撑杆
+add(cyl(0.95, 0.95, 15, 20), M.body, [-27.5, -1.7, 0], [0, 0, Math.PI / 2]); // 下撑杆
+add(RB(1.4, 5.4, 1.4, 0.3), M.body, [-32.0, 0.3, 0]); // 立杆
+add(RB(1.8, 9.2, 4.6, 0.6), M.poly, [-35.0, 0.3, 0]); // 托底板
+add(RB(1.3, 8.7, 4.4, 0.5), M.rubber, [-36.1, 0.3, 0]); // 缓冲垫
+// 托底板固定螺栓
+add(cyl(0.5, 0.5, 5.0, 14), M.steel, [-35.0, 0.3, 0], [Math.PI / 2, 0, 0]);
+
+/* ================= 前握把（可选配件位） ================= */
+add(RB(3.4, 1.4, 3.4, 0.35), M.dark, [15.5, -1.0, 0]);
+
+    return gun;
+}
+
+function rawAWM(){
+  const root = new T.Group();
+  let addTarget = root;
+  const S = { add(o){ addTarget.add(o); } };
+/* ---------- 程序化材质：磨砂颗粒 / 磷化钢 / 阳极氧化 ---------- */
+function noise(n = 256, streak = false) {
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    const g = c.getContext('2d'),
+        d = g.createImageData(n, n);
+    for (let i = 0; i < d.data.length; i += 4) {
+        let v = 128 + (Math.random() - .5) * (streak ? 34 : 52);
+        d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+        d.data[i + 3] = 255;
+    }
+    g.putImageData(d, 0, 0);
+    if (streak)
+        for (let k = 0; k < 300; k++) {
+            g.fillStyle = `rgba(255,255,255,${Math.random()*.045})`;
+            g.fillRect(0, Math.random() * n, n, Math.random() * .8);
+        }
+    const t = new T.CanvasTexture(c);
+    t.wrapS = t.wrapT = T.RepeatWrapping;
+    t.repeat.set(4, 4);
+    return t;
+}
+const Np = noise(),
+    Nm = noise(256, true);
+const M = {
+    poly: new T.MeshStandardMaterial({
+        color: 0x46513c,
+        bumpMap: Np,
+        bumpScale: .0009,
+        roughness: .88,
+        metalness: .03
+    }),
+    polyDk: new T.MeshStandardMaterial({
+        color: 0x36402e,
+        bumpMap: Np,
+        bumpScale: .0008,
+        roughness: .9
+    }),
+    rec: new T.MeshStandardMaterial({
+        color: 0x272a2d,
+        bumpMap: Nm,
+        bumpScale: .0004,
+        roughness: .5,
+        metalness: .72
+    }),
+    barrel: new T.MeshStandardMaterial({
+        color: 0x222528,
+        bumpMap: Nm,
+        bumpScale: .0003,
+        roughness: .42,
+        metalness: .86
+    }),
+    brake: new T.MeshStandardMaterial({
+        color: 0x1c1f21,
+        bumpMap: Nm,
+        bumpScale: .0003,
+        roughness: .46,
+        metalness: .84
+    }),
+    scope: new T.MeshStandardMaterial({
+        color: 0x191c1f,
+        bumpMap: Nm,
+        bumpScale: .0002,
+        roughness: .33,
+        metalness: .66
+    }),
+    mount: new T.MeshStandardMaterial({
+        color: 0x1e2124,
+        roughness: .4,
+        metalness: .72
+    }),
+    rail: new T.MeshStandardMaterial({
+        color: 0x141719,
+        roughness: .52,
+        metalness: .7
+    }),
+    alu: new T.MeshStandardMaterial({
+        color: 0x9aa2a7,
+        roughness: .28,
+        metalness: .95
+    }),
+    aluDk: new T.MeshStandardMaterial({
+        color: 0x565c60,
+        roughness: .42,
+        metalness: .9
+    }),
+    brass: new T.MeshStandardMaterial({
+        color: 0xb08a3c,
+        roughness: .3,
+        metalness: .9
+    }),
+    rubber: new T.MeshStandardMaterial({
+        color: 0x121415,
+        bumpMap: Np,
+        bumpScale: .0012,
+        roughness: .96
+    }),
+    dark: new T.MeshStandardMaterial({
+        color: 0x07090a,
+        roughness: 1
+    }),
+    mag: new T.MeshStandardMaterial({
+        color: 0x363b3f,
+        roughness: .6,
+        metalness: .55
+    }),
+};
+/* 光学镀膜镜片 */
+function lensTex() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const g = c.getContext('2d');
+    let v = g.createRadialGradient(200, 180, 10, 256, 256, 270);
+    v.addColorStop(0, '#21435c');
+    v.addColorStop(.34, '#0d1e30');
+    v.addColorStop(.76, '#070d17');
+    v.addColorStop(1, '#020407');
+    g.fillStyle = v;
+    g.fillRect(0, 0, 512, 512);
+    g.strokeStyle = 'rgba(105,66,170,.38)';
+    g.lineWidth = 20;
+    g.beginPath();
+    g.arc(256, 256, 214, 0, 7);
+    g.stroke();
+    g.strokeStyle = 'rgba(46,140,150,.24)';
+    g.lineWidth = 9;
+    g.beginPath();
+    g.arc(256, 256, 182, 0, 7);
+    g.stroke();
+    g.globalCompositeOperation = 'lighter';
+    let h = g.createRadialGradient(170, 150, 4, 170, 150, 160);
+    h.addColorStop(0, 'rgba(190,225,255,.34)');
+    h.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = h;
+    g.beginPath();
+    g.ellipse(175, 158, 124, 72, -.6, 0, 7);
+    g.fill();
+    return c;
+}
+
+/* ---------- 几何工具（全程序化，无外部模型） ---------- */
+const add = (geo, mat, p = [0, 0, 0], r = [0, 0, 0]) => {
+    const o = new T.Mesh(geo, mat);
+    o.position.set(...p);
+    o.rotation.set(...r);
+    S.add(o);
+    return o;
+};
+const box = (w, h, d, m, p, r) => add(new T.BoxGeometry(w, h, d), m, p, r);
+const cyl = (a, b, h, m, p, ax = 'y', sg = 24) => {
+    const g = new T.CylinderGeometry(a, b, h, sg);
+    if (ax === 'x') g.rotateZ(Math.PI / 2);
+    if (ax === 'z') g.rotateX(Math.PI / 2);
+    return add(g, m, p);
+};
+// 旋转体：pts=[半径,轴向距离]，dir=-1 指向枪口(-X)，+1 指向枪托(+X)
+const lathe = (pts, m, x0 = 0, dir = -1, sg = 44, y = 0) => {
+    const g = new T.LatheGeometry(pts.map(p => new T.Vector2(p[0], p[1])), sg);
+    g.rotateZ(dir < 0 ? Math.PI / 2 : -Math.PI / 2);
+    g.translate(x0, y, 0);
+    return add(g, m);
+};
+const shape = (p, holes = []) => {
+    const s = new T.Shape();
+    s.moveTo(...p[0]);
+    p.slice(1).forEach(q => s.lineTo(...q));
+    s.closePath();
+    holes.forEach(h => s.holes.push(h));
+    return s;
+};
+const extr = (s, d, m, z = 0, bev = .0025) => {
+    const g = new T.ExtrudeGeometry(s, {
+        depth: d,
+        bevelEnabled: true,
+        bevelThickness: bev,
+        bevelSize: bev,
+        bevelSegments: 2,
+        curveSegments: 18
+    });
+    g.translate(0, 0, z - d / 2 - bev);
+    return add(g, m);
+};
+const rrect = (x, y, w, h, r) => {
+    const p = new T.Path();
+    p.moveTo(x + r, y);
+    p.lineTo(x + w - r, y);
+    p.quadraticCurveTo(x + w, y, x + w, y + r);
+    p.lineTo(x + w, y + h - r);
+    p.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    p.lineTo(x + r, y + h);
+    p.quadraticCurveTo(x, y + h, x, y + h - r);
+    p.lineTo(x, y + r);
+    p.quadraticCurveTo(x, y, x + r, y);
+    return p;
+};
+const ell = (x, y, rx, ry) => {
+    const p = new T.Path();
+    p.absellipse(x, y, rx, ry, 0, Math.PI * 2, true, .12);
+    return p;
+};
+const inst = (g, m, L) => {
+    const im = new T.InstancedMesh(g, m, L.length),
+        d = new T.Object3D();
+    L.forEach((v, i) => {
+        d.position.set(...v.p);
+        d.rotation.set(...(v.r || [0, 0, 0]));
+        d.scale.set(...(v.s || [1, 1, 1]));
+        d.updateMatrix();
+        im.setMatrixAt(i, d.matrix);
+    });
+    S.add(im);
+    return im;
+};
+const seg = (a, b, r, m) => {
+    const v = new T.Vector3().subVectors(b, a),
+        o = add(new T.CylinderGeometry(r, r, v.length(), 10), m);
+    o.position.copy(a).add(b).multiplyScalar(.5);
+    o.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), v.normalize());
+    return o;
+};
+
+function knurl(c, ax, r, len, n, m) {
+    const g = ax === 'y' ? new T.BoxGeometry(.0017, len, .0017) : ax === 'x' ? new T.BoxGeometry(len, .0017, .0017) : new T.BoxGeometry(.0017, .0017, len),
+        L = [];
+    for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2;
+        L.push({
+            p: ax === 'y' ? [c[0] + Math.cos(a) * r, c[1], c[2] + Math.sin(a) * r] : ax === 'x' ? [c[0], c[1] + Math.cos(a) * r, c[2] + Math.sin(a) * r] : [c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r, c[2]]
+        });
+    }
+    return inst(g, m, L);
+}
+
+function screw(p, ax = 'z', r = .0034) {
+    cyl(r, r, .0013, M.alu, p, ax, 12);
+    const o = ax === 'z' ? [0, 0, -.0009] : ax === 'x' ? [-.0009, 0, 0] : [0, -.0009, 0];
+    cyl(r * .46, r * .46, .0007, M.dark, [p[0] + o[0], p[1] + o[1], p[2] + o[2]], ax, 6);
+}
+
+function texDecal(cv, w, h, p, ry = 0) {
+    const t = new T.CanvasTexture(cv);
+    t.colorSpace = T.SRGBColorSpace;
+    t.anisotropy = 8;
+    return add(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({
+        map: t,
+        transparent: true,
+        depthWrite: false,
+        side: T.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -3
+    }), p, [0, ry, 0]);
+}
+
+function decal(lines, w, h, p, ry = 0) {
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 256;
+    const g = c.getContext('2d');
+    g.textBaseline = 'middle';
+    lines.forEach((L, i) => {
+        g.font = `${i===0?'600 ':''}${L.s||(i===0?58:38)}px Arial`;
+        g.fillStyle = `rgba(240,246,248,${L.a||.95})`;
+        g.fillText(L.t, 20, 42 + i * 62);
+    });
+    return texDecal(c, w, h, p, ry);
+}
+
+function badge() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.strokeStyle = '#d3dcd4';
+    g.lineWidth = 6;
+    g.beginPath();
+    g.arc(128, 128, 116, 0, 7);
+    g.stroke();
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(128, 128, 101, 0, 7);
+    g.stroke();
+    g.fillStyle = '#eef3ee';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 108px Arial';
+    g.fillText('AI', 128, 112);
+    g.font = 'bold 21px Arial';
+    g.fillText('ACCURACY INTL.', 128, 198);
+    return c;
+}
+
+function turretCv() {
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#171a1c';
+    g.fillRect(0, 0, 1024, 128);
+    g.fillStyle = '#dfe7e9';
+    g.font = 'bold 60px Arial';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (let i = 0; i < 12; i++) g.fillText(i, i * 85.3 + 42, 60);
+    g.fillStyle = '#b9c3c7';
+    g.fillRect(0, 104, 1024, 4);
+    return c;
+}
+
+/* ---------- 尺寸基准：全长 1.25m，枪口 -X，枪托 +X，枪膛轴线 y=0 ---------- */
+const X0 = -.075,
+    SY = .085; // 机匣前端 / 瞄准镜轴高
+
+/* 机匣（铝合金） */
+extr(shape([
+    [-.075, -.032],
+    [.152, -.032],
+    [.152, .030],
+    [.132, .038],
+    [-.058, .038],
+    [-.075, .030]
+]), .050, M.rec, 0, .003);
+box(.205, .008, .022, M.rail, [.030, .042, 0]);
+inst(new T.BoxGeometry(.0062, .004, .0215), M.rail, Array.from({
+    length: 20
+}, (_, i) => ({
+    p: [-.068 + i * .010, .048, 0]
+})));
+[-.070, .128].forEach(x => box(.013, .013, .025, M.rail, [x, .046, 0]));
+// 抛壳口（右侧 -Z）与可见枪机
+texDecal((() => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#050607';
+    g.fillRect(0, 0, 256, 64);
+    g.strokeStyle = '#4a5054';
+    g.lineWidth = 3;
+    g.strokeRect(2, 2, 252, 60);
+    return c;
+})(), .082, .024, [-.010, .013, -.0305], Math.PI);
+cyl(.0092, .0092, .070, M.aluDk, [-.012, .013, -.020], 'x', 20);
+[-.044, -.005, .018].forEach(x => box(.005, .019, .003, M.aluDk, [x, .013, -.014]));
+// 侧面刻字 / 螺钉
+decal([{
+    t: 'ACCURACY INTERNATIONAL',
+    s: 56
+}, {
+    t: 'AWM  ·  Cal. .338 Lapua Magnum',
+    s: 40
+}, {
+    t: 'PORTSMOUTH  ENGLAND',
+    s: 32,
+    a: .6
+}], .185, .046, [.038, -.014, .0305]);
+decal([{
+    t: 'AWM  /  AI',
+    s: 58
+}, {
+    t: 'SN 12·338·0471',
+    s: 38
+}, {
+    t: 'CAUTION · READ MANUAL',
+    s: 30,
+    a: .6
+}], .160, .046, [.035, -.014, -.0305], Math.PI);
+[-.058, .070, .132].forEach(x => [-1, 1].forEach(s => screw([x, -.024, s * .0305], 'z', .0032)));
+// 保险拨杆
+cyl(.006, .006, .005, M.aluDk, [.126, -.006, -.030], 'z');
+box(.014, .004, .003, M.aluDk, [.130, -.006, -.034]);
+
+/* 枪机柄（右侧，向后下弯 + 球头） */
+seg(new T.Vector3(.018, .008, -.026), new T.Vector3(.018, .006, -.052), .0052, M.aluDk);
+seg(new T.Vector3(.018, .006, -.052), new T.Vector3(.068, -.002, -.059), .0046, M.aluDk);
+add(new T.SphereGeometry(.014, 20, 14), M.aluDk, [.072, -.003, -.060]);
+cyl(.0105, .0105, .003, M.dark, [.072, -.003, -.0735], 'z');
+add(new T.TorusGeometry(.013, .0012, 6, 20), M.rec, [.072, -.003, -.062], [0, 0, 0]);
+
+/* 枪管：自由浮动重型枪管 + 双室制退器 */
+lathe([
+    [0, 0],
+    [.019, 0],
+    [.019, .028],
+    [.0138, .046],
+    [.0135, .062],
+    [.0135, .580],
+    [.0125, .648],
+    [.0125, .652]
+], M.barrel, X0);
+[.008, .016, .024].forEach(t => add(new T.TorusGeometry(.0192, .0008, 6, 32), M.aluDk, [X0 - t, 0, 0], [0, Math.PI / 2, 0]));
+lathe([
+    [.0125, .648],
+    [.0138, .650],
+    [.014, .654],
+    [.014, .668],
+    [.0102, .671],
+    [.0102, .678],
+    [.014, .681],
+    [.014, .696],
+    [.0102, .699],
+    [.0102, .706],
+    [.0136, .709],
+    [.0136, .713],
+    [.012, .716],
+    [.0046, .716],
+    [.0046, .710],
+    [0, .710]
+], M.brake, X0);
+[.654, .681, .709].forEach(t => add(new T.TorusGeometry(.0141, .0007, 6, 32), M.aluDk, [X0 - t, 0, 0], [0, Math.PI / 2, 0]));
+add(new T.CircleGeometry(.0046, 24), M.dark, [X0 - .7165, 0, 0], [0, -Math.PI / 2, 0]);
+add(new T.TorusGeometry(.0049, .0006, 6, 24), M.aluDk, [X0 - .7162, 0, 0], [0, Math.PI / 2, 0]);
+// 制退器排气孔 + 开槽连接筋
+[.660, .689].forEach(t => {
+    [
+        [0, .014, 0, 'y'],
+        [0, -.014, 0, 'y']
+    ].forEach(v => cyl(.0042, .0042, .0012, M.dark, [X0 - t, v[1], 0], 'y', 14));
+    [-.014, .014].forEach(z => cyl(.0042, .0042, .0012, M.dark, [X0 - t, 0, z], 'z', 14));
+});
+[.6745, .7025].forEach(t => [45, 135, 225, 315].forEach(a => {
+    const q = a * Math.PI / 180;
+    cyl(.0016, .0016, .010, M.brake, [X0 - t, Math.cos(q) * .0125, Math.sin(q) * .0125], 'x', 8);
+}));
+
+/* 护木：两片带真实镂空散热孔的侧板 + 底板（枪管浮置在 U 型槽中） */
+const fp = [
+    [-.420, .012],
+    [-.405, .021],
+    [-.068, .021],
+    [-.068, -.050],
+    [-.400, -.050],
+    [-.420, -.040]
+];
+const holes = [-.355, -.265, -.175, -.115].map(x => rrect(x, -.006, .060, .012, .006));
+[-1, 1].forEach(s => extr(shape(fp, holes), .006, M.poly, s * .026, .0015));
+extr(shape([
+    [-.415, -.050],
+    [-.068, -.050],
+    [-.068, -.028],
+    [-.415, -.032]
+]), .052, M.poly, 0, .002);
+[-1, 1].forEach(s => {
+    box(.344, .004, .008, M.polyDk, [-.237, .021, s * .026]);
+    box(.344, .002, .0012, M.polyDk, [-.237, -.036, s * .0292]);
+});
+box(.012, .068, .052, M.poly, [-.414, -.018, 0]);
+[-.35, -.25, -.15].forEach(x => [-1, 1].forEach(s => screw([x, .014, s * .0305], 'z', .0028)));
+
+/* 弹匣井 / 扳机护圈 / 扳机 */
+box(.092, .026, .003, M.polyDk, [.027, -.046, -.021]);
+box(.092, .026, .003, M.polyDk, [.027, -.046, .021]);
+box(.003, .026, .044, M.polyDk, [-.019, -.046, 0]);
+box(.003, .026, .044, M.polyDk, [.073, -.046, 0]);
+extr(shape([
+    [.080, -.032],
+    [.140, -.032],
+    [.146, -.046],
+    [.140, -.077],
+    [.086, -.077],
+    [.076, -.062]
+], [rrect(.088, -.069, .046, .030, .010)]), .024, M.rec, 0, .002);
+extr(shape([
+    [.104, -.034],
+    [.113, -.034],
+    [.110, -.058],
+    [.101, -.062],
+    [.103, -.049]
+]), .006, M.aluDk, 0, .001);
+
+/* 5 发 .338 弹匣 */
+extr(shape([
+    [-.015, -.046],
+    [.070, -.046],
+    [.072, -.138],
+    [.060, -.148],
+    [-.030, -.148],
+    [-.034, -.132]
+]), .038, M.mag, 0, .002);
+box(.108, .008, .044, M.mag, [.018, -.151, 0]);
+[-.075, -.100, -.125].forEach(y => [-1, 1].forEach(s => box(.082, .0035, .0018, M.aluDk, [.018, y, s * .0225])));
+[-1, 1].forEach(s => decal([{
+    t: '.338 LAP. MAG.',
+    s: 62,
+    a: 1
+}], .082, .020, [.018, -.088, s * .024], s < 0 ? Math.PI : 0));
+[-.006, .024].forEach(x => [-1, 1].forEach(s => {
+    cyl(.0043, .0043, .002, M.brass, [x, -.045, s * .009], 'y', 12);
+    cyl(.0015, .0015, .0022, M.aluDk, [x, -.0447, s * .009], 'y', 10);
+}));
+
+/* 枪托主体：拇指孔一体式聚合物托 */
+extr(shape([
+    [.148, .030],
+    [.170, .036],
+    [.430, .044],
+    [.443, .034],
+    [.446, -.095],
+    [.400, -.112],
+    [.352, -.168],
+    [.305, -.171],
+    [.272, -.150],
+    [.250, -.100],
+    [.205, -.075],
+    [.170, -.060],
+    [.148, -.045]
+], [ell(.300, -.038, .041, .040)]), .056, M.poly, 0, .003);
+[-1, 1].forEach(s => {
+    texDecal(badge(), .050, .050, [.205, .004, s * .0345], s < 0 ? Math.PI : 0);
+    // 握把防滑纹
+    inst(new T.BoxGeometry(.030, .0024, .0012), M.polyDk, Array.from({
+        length: 8
+    }, (_, i) => ({
+        p: [.315, -.100 - i * .008, s * .0305]
+    })));
+    // 贴腮板调节旋钮
+    cyl(.010, .010, .004, M.aluDk, [.405, .025, s * .0325], 'z');
+    knurl([.405, .025, s * .035], 'z', .010, .004, 24, M.aluDk);
+    // 背带环
+    const t = new T.Mesh(new T.TorusGeometry(.011, .0022, 8, 24), M.aluDk);
+    t.position.set(.425, -.098, s * .033);
+    S.add(t);
+    const u = new T.Mesh(new T.TorusGeometry(.011, .0022, 8, 24), M.aluDk);
+    u.position.set(-.410, -.055, s * .030);
+    S.add(u);
+});
+/* 可调贴腮板 + 导柱 */
+extr(shape([
+    [.170, .040],
+    [.205, .062],
+    [.240, .074],
+    [.395, .076],
+    [.425, .068],
+    [.430, .042]
+]), .062, M.poly, 0, .003);
+[-1, 1].forEach(s => {
+    box(.258, .0018, .001, M.polyDk, [.300, .043, s * .0322]);
+    cyl(.006, .006, .003, M.aluDk, [.192, .050, s * .0325], 'z', 12);
+});
+/* 托底 spacer + 橡胶托底板 + 横纹 */
+extr(shape([
+    [.430, -.108],
+    [.446, -.108],
+    [.446, .040],
+    [.430, .040]
+]), .058, M.rubber, 0, .002);
+extr(shape([
+    [.446, -.112],
+    [.458, -.100],
+    [.458, .030],
+    [.446, .044]
+]), .060, M.rubber, 0, .003);
+inst(new T.BoxGeometry(.0015, .0022, .056), M.aluDk, Array.from({
+    length: 15
+}, (_, i) => ({
+    p: [.4605, -.100 + i * .0090, 0]
+})));
+[-1, 1].forEach(s => [-.055, .005].forEach(y => screw([.452, y, s * .034], 'z', .0035)));
+
+/* ---------- 光学瞄准镜（S&B PM II 5-25×56 形态） ---------- */
+lathe([
+    [.0265, 0],
+    [.0292, 0],
+    [.0292, .010],
+    [.028, .016],
+    [.018, .068],
+    [.0172, .078],
+    [.0172, .185],
+    [.0205, .190],
+    [.0205, .225],
+    [.0172, .230],
+    [.0172, .272],
+    [.0195, .277],
+    [.0195, .302],
+    [.018, .307],
+    [.0215, .330],
+    [.0228, .346],
+    [.0215, .352],
+    [.0185, .355],
+    [0, .355]
+], M.scope, -.205, +1, 48, SY);
+add(new T.CircleGeometry(.0262, 48), new T.MeshPhysicalMaterial({
+    map: (() => {
+        const t = new T.CanvasTexture(lensTex());
+        t.colorSpace = T.SRGBColorSpace;
+        return t;
+    })(),
+    metalness: .35,
+    roughness: .06,
+    clearcoat: 1,
+    envMapIntensity: 1.7
+}), [-.2055, SY, 0], [0, -Math.PI / 2, 0]);
+add(new T.CircleGeometry(.0183, 40), new T.MeshPhysicalMaterial({
+    map: (() => {
+        const t = new T.CanvasTexture(lensTex());
+        t.colorSpace = T.SRGBColorSpace;
+        return t;
+    })(),
+    metalness: .3,
+    roughness: .07,
+    clearcoat: 1,
+    envMapIntensity: 1.4
+}), [.1506, SY, 0], [0, Math.PI / 2, 0]);
+add(new T.TorusGeometry(.028, .0016, 8, 48), M.aluDk, [-.204, SY, 0], [0, Math.PI / 2, 0]);
+add(new T.TorusGeometry(.0286, .0008, 6, 48), M.alu, [-.202, SY, 0], [0, Math.PI / 2, 0]);
+add(new T.TorusGeometry(.0212, .0012, 8, 40), M.aluDk, [.145, SY, 0], [0, Math.PI / 2, 0]);
+decal([{
+    t: 'SCHMIDT & BENDER   PM II   5-25×56',
+    s: 40,
+    a: .9
+}], .145, .013, [-.055, SY + .006, -.0168], Math.PI);
+// 调节塔：高程 / 风偏 / 视差
+const tt = new T.CanvasTexture(turretCv());
+tt.colorSpace = T.SRGBColorSpace;
+const numMat = new T.MeshStandardMaterial({
+    map: tt,
+    metalness: .55,
+    roughness: .45
+});
+cyl(.021, .021, .006, M.scope, [.0025, .1085, 0], 'y');
+cyl(.0182, .0182, .010, numMat, [.0025, .1135, 0], 'y', 32);
+cyl(.0175, .0175, .016, M.scope, [.0025, .1205, 0], 'y', 32);
+knurl([.0025, .1205, 0], 'y', .0177, .015, 44, M.scope);
+cyl(.0186, .0186, .005, M.scope, [.0025, .1310, 0], 'y', 32);
+inst(new T.BoxGeometry(.0012, .0012, .0036), M.alu, Array.from({
+    length: 24
+}, (_, i) => ({
+    p: [.0025 + Math.cos(i / 24 * 6.283) * .0175, .1336, Math.sin(i / 24 * 6.283) * .0175],
+    r: [0, i / 24 * 6.283, 0]
+})));
+box(.006, .0015, .006, M.alu, [.0025, .1340, .0145]);
+// 风偏旋钮（-Z）
+cyl(.016, .016, .005, M.scope, [.0025, SY, -.023], 'z');
+cyl(.014, .014, .018, M.scope, [.0025, SY, -.035], 'z');
+knurl([.0025, SY, -.035], 'z', .0142, .015, 36, M.scope);
+cyl(.015, .015, .004, M.scope, [.0025, SY, -.046], 'z');
+// 视差 / 侧聚焦（+Z）
+cyl(.023, .023, .011, M.scope, [.0025, SY, .0295], 'z');
+knurl([.0025, SY, .0295], 'z', .0232, .009, 48, M.scope);
+texDecal((() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.fillStyle = '#1a1d20';
+    g.beginPath();
+    g.arc(128, 128, 126, 0, 7);
+    g.fill();
+    g.strokeStyle = '#c9d3d6';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(128, 128, 104, 0, 7);
+    g.stroke();
+    g.fillStyle = '#dbe3e6';
+    g.font = 'bold 30px Arial';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('∞  50  100  200  500  1000', 128, 58);
+    g.fillText('PARALLAX', 128, 200);
+    g.fillStyle = '#c0392b';
+    g.fillRect(124, 10, 8, 34);
+    return c;
+})(), .042, .042, [.0025, SY, .0355]);
+// 变倍环 / 目镜屈光度环滚花
+knurl([.0845, SY, 0], 'x', .0197, .021, 42, M.scope);
+knurl([.135, SY, 0], 'x', .0228, .012, 36, M.scope);
+// 双镜座环 + 皮卡汀尼夹座
+[-.100, .045].forEach(x => {
+    lathe([
+        [.0174, 0],
+        [.0228, 0],
+        [.0228, .016],
+        [.0174, .016],
+        [.0174, 0]
+    ], M.mount, x - .008, +1, 40, SY);
+    add(new T.TorusGeometry(.0226, .001, 6, 40), M.aluDk, [x - .008, SY, 0], [0, Math.PI / 2, 0]);
+    add(new T.TorusGeometry(.0226, .001, 6, 40), M.aluDk, [x + .008, SY, 0], [0, Math.PI / 2, 0]);
+    box(.020, .021, .030, M.mount, [x, .056, 0]);
+    box(.027, .007, .034, M.mount, [x, .047, 0]);
+    [-1, 1].forEach(s => {
+        [SY + .012, SY - .012].forEach(y => screw([x, y, s * .0205], 'z', .0029));
+        screw([x, .052, s * .0185], 'z', .0032);
+    });
+});
+
+/* ---------- 折叠两脚架（展开状态）+ 前背带环 ---------- */
+box(.046, .018, .034, M.rec, [-.395, -.060, 0]);
+cyl(.006, .006, .060, M.aluDk, [-.395, -.076, 0], 'z');
+[-1, 1].forEach(s => {
+    const a = new T.Vector3(-.395, -.078, s * .014),
+        b = new T.Vector3(-.470, -.248, s * .105);
+    seg(a, a.clone().lerp(b, .46), .0055, M.rec);
+    seg(a.clone().lerp(b, .44), b, .0040, M.alu);
+    cyl(.0085, .0105, .015, M.rubber, [b.x, b.y - .004, b.z], 'y');
+    seg(new T.Vector3(-.400, -.092, s * .010), a.clone().lerp(b, .56), .0016, M.alu);
+    cyl(.0035, .0035, .012, M.aluDk, [a.x, a.y, a.z], 'z');
+});
+
+    return root;
+}
+
+/* ---------------- 统一封装：尺度 / 朝向 / 动画锚点 ---------------- */
+/* cfg.scale  : 原稿单位换算到米（cm 稿 0.01，m 稿 1）
+   cfg.rotY   : 把原稿的枪口轴转到游戏的 -Z（+X 枪口 = +PI/2，-X = -PI/2）
+   cfg.sight  : 原稿里瞄准基线的 y，用于 ADS 时把准星压回屏幕中心
+   cfg.zShift : 原稿模型原点在枪身中央（局部 z 约 [-L/2,+L/2]），而游戏自带
+                的四把枪原点在枪尾（局部 z 约 [-L,0]）。若不平移，靠近相机
+                的那半截枪身会被透视放得极大、枪口缩成一点，看起来就是
+                "枪口正对镜头只露出一根细条"。这里按同类原版枪的枪身中心
+                把模型整体前推，使新枪在画面里的前后位置与老枪一致。
+   cfg.boost   : 用户素材换算后普遍比游戏自带枪小一两号（GLOCK 尤其只有
+                原版 P226 的 2/3）。把「模型 + 枪口/抛壳锚点 + 平移量」一起
+                放进 body 组等比放大，避免逐个坐标手算出错。
+   cfg.base / cfg.rot / cfg.adsZ / cfg.adsRef : 直接沿用游戏自带同类枪的
+                调校值（步枪 / 手枪 / 霰弹 / 狙击），保证九把枪姿态统一。 */
+function wrapVM(raw, cfg){
+  const s = cfg.zShift || 0;
+  const k = cfg.boost || 1;
+  let bolt = null;
+  const inner = raw.group || raw;
+  const G = new T.Group();
+  const body = new T.Group();     /* 统一等比放大：几何与各锚点一并跟随 */
+  body.scale.setScalar(k);
+  G.add(body);
+
+  inner.scale.setScalar(cfg.scale);
+  inner.rotation.y = cfg.rotY;
+  inner.position.z = s;
+  body.add(inner);
+  if (raw.slide){
+    /* 套筒组与枪身平级挂在 body 下：position 用米，动画量 0.045 才是 4.5cm，
+       否则会被 0.01 的厘米缩放吃掉。套筒必须跟枪身一起平移。 */
+    raw.slide.scale.setScalar(cfg.scale);
+    raw.slide.rotation.y = cfg.rotY;
+    raw.slide.position.z = s;
+    body.add(raw.slide);
+  }
+
+  /* 枪口 / 抛壳锚点同样要跟随 zShift，否则枪焰和弹壳会脱离枪身 */
+  const muzzle = new T.Object3D();
+  muzzle.position.set(cfg.muzzle[0], cfg.muzzle[1], cfg.muzzle[2] + s);
+  body.add(muzzle);
+  const eject = new T.Object3D();
+  eject.position.set(cfg.eject[0], cfg.eject[1], cfg.eject[2] + s);
+  body.add(eject);
+  const hands = new T.Group(); G.add(hands);
+
+  /* 瞄具锚点：挂在 body 空间，沿枪管 ±Z、顶部 +Y。这里只放一个空 Object3D，
+     真正的 3D 瞄具（红点 / 倍镜 / 热成像）由主脚本的 mountNewOptic 按装备的
+     配件动态挂上 / 摘下。anchorYm 既是铁瞄基线高度（无瞄具时 ADS 对齐它），
+     也是瞄具中心高度（有瞄具时 cowitness 对齐）。 */
+  const opticAnchor = new T.Object3D();
+  opticAnchor.position.set(0, cfg.ironYm, cfg.anchorZ);
+  body.add(opticAnchor);
+
+  /* 栓动枪机：游戏每帧把 bolt.position.z 设为 0.10 + back*0.125，
+     所以动画位移写在 bolt 上、zShift 写在内层 boltGeo 上，互不覆盖。 */
+  if (cfg.bolt){
+    bolt = new T.Group();
+    const boltGeo = new T.Group();
+    boltGeo.position.z = s;
+    bolt.add(boltGeo);
+    const metal = new T.MeshStandardMaterial({color:0x8b9096, metalness:.88, roughness:.38,
+                                              envMap:STUDIO_ENV, envMapIntensity:0.5});
+    const stem = new T.Mesh(new T.CylinderGeometry(0.006,0.006,0.055,10), metal);
+    stem.rotation.x = Math.PI/2;
+    stem.position.set(0.048, 0.014, -0.10 + 0.028);
+    boltGeo.add(stem);
+    const knob = new T.Mesh(new T.SphereGeometry(0.015,12,10), metal);
+    knob.position.set(0.048, 0.014, -0.10 + 0.056);
+    boltGeo.add(knob);
+    body.add(bolt);
+  }
+
+  fixMaterials(G);
+
+  const r = cfg.rot;
+  const vm = {
+    group:G, muzzle:muzzle, eject:eject, hands:hands,
+    basePos:new T.Vector3(cfg.base[0], cfg.base[1], cfg.base[2]),
+    baseRot:new T.Vector3(r[0], r[1], r[2]),
+    /* ADS 下压量 = 瞄准基线高度 × boost。瞄具锚点在 body 空间（已含 body.scale=k
+       等比放大）的 y = cfg.ironYm；但开镜时整枪还会被 vm.group.scale=VM_SCALE
+       再压一次，而枪的最终定位 py→adsPos.y 只是再乘 VM_SCALE，所以要让「锚点世界
+       y = ironYm·k·VM_SCALE」与「py = -ironYm·k·VM_SCALE」恰好抵消、瞄具中心落在
+       屏幕正中准星，开镜下压量在枪本地空间就是 ironYm·k（符号取负＝枪往视线下方移）。 */
+    adsPos:new T.Vector3(0.0006, -(cfg.ironYm * cfg.boost), cfg.adsZ),
+    adsRot:new T.Vector3(0,0,0),
+    adsRef:cfg.adsRef || 0.62
+  };
+  /* 瞄具挂载状态（主脚本 mountNewOptic 读写） */
+  vm.ironYm   = cfg.ironYm;     /* 铁瞄基线高度（body 空间，未乘 VM_SCALE） */
+  vm.anchorYm = cfg.ironYm;     /* 瞄具中心高度：与铁瞄等高 → 共像对齐 */
+  vm.boost    = cfg.boost;      /* 等比放大系数 k：ADS 下压量需乘它才能抵消 body.scale */
+  vm.anchorZ  = cfg.anchorZ;
+  vm.opticFlip= !!cfg.opticFlip;
+  vm.opticAnchor = opticAnchor;  /* 空锚点，瞄具挂这里 */
+  vm.optic    = null;            /* 当前已挂上的 3D 瞄具组 */
+  vm.optYm    = null;            /* 当前瞄具中心高度；null = 用铁瞄 */
+  vm.adsYm    = cfg.ironYm;      /* 当前 ADS 对齐用的高度（铁瞄或瞄具） */
+  if (raw.slide) vm.slide = raw.slide;
+  if (bolt) vm.bolt = bolt;
+  return vm;
+}
+
+/* 参数取自游戏自带 4 把枪（buildRifle / buildPistol / buildShotgun /
+   buildSniper 的 basePos / baseRot / adsPos.z / adsRef），同类对齐。 */
+const CFG = {
+  scar_l : { scale:0.01, boost:1.18, rotY: Math.PI/2, zShift:-0.3605,
+             ironYm:0.0814, anchorZ:-0.18, adsZ:-0.866, adsRef:0.986,
+             muzzle:[0,0.010,-0.430], eject:[0.030,0.040,-0.060],
+             base:[0.205,-0.243,-0.928], rot:[-0.028,0.082,0.055] },
+  glock17: { scale:0.01, boost:1.45, rotY: Math.PI/2, zShift:-0.0940,
+             ironYm:0.0555, anchorZ:-0.06, adsZ:-0.4935, adsRef:0.6235,
+             muzzle:[0,0.037,-0.103], eject:[0.022,0.045,0.000],
+             base:[0.175,-0.232,-0.754], rot:[-0.022,0.072,0.050] },
+  ak47   : { scale:1.00, boost:1.08, rotY: Math.PI/2, zShift:-0.2160,
+             ironYm:0.1080, anchorZ:-0.30, adsZ:-0.866, adsRef:0.986,
+             muzzle:[0,0.045,-0.643], eject:[0.035,0.055,-0.030],
+             base:[0.205,-0.243,-0.928], rot:[-0.028,0.082,0.055] },
+  aa12   : { scale:0.01, boost:1.35, rotY: Math.PI/2, zShift:-0.3785,
+             ironYm:0.0785, anchorZ:-0.12, adsZ:-1.033, adsRef:1.653,
+             muzzle:[0,0.019,-0.380], eject:[0.035,0.045,-0.020],
+             base:[0.222,-0.255,-0.986], rot:[-0.023,0.086,0.055] },
+  awm    : { scale:1.00, boost:1.06, rotY:-Math.PI/2, zShift:-0.3170,
+             ironYm:0.1347, anchorZ:0.22, adsZ:-0.6205, adsRef:0.7105, opticFlip:true,
+             muzzle:[0,0.000,-0.792], eject:[0.035,0.035,0.020],
+             base:[0.224,-0.262,-1.160], rot:[-0.022,0.084,0.055], bolt:true }
+};
+
+window.NEW_GUN_BUILDERS = {
+  scar_l : function(){ return wrapVM(rawScarL(),  CFG.scar_l);  },
+  glock17: function(){ return wrapVM(rawGlock17(),CFG.glock17); },
+  ak47   : function(){ return wrapVM(rawAK47(),   CFG.ak47);    },
+  aa12   : function(){ return wrapVM(rawAA12(),   CFG.aa12);    },
+  awm    : function(){ return wrapVM(rawAWM(),    CFG.awm);     }
+};
+/* 给主脚本用的 3D 瞄具工厂：传入配件 id，返回一个已对齐坐标系的瞄具组。
+   flip 由各枪 vm.opticFlip 控制（AWM 的 rotY=-90° 需要把镜片朝向枪口）。 */
+window.NEW_GUN_OPTIC = function(partId, flip){ return buildOptic3D(partId, flip); };
+})();
+
 /* =========================================================================
    9. WEAPON DEFINITIONS
    ========================================================================= */
 const WEAPONS = [
-  { id:'rifle', name:'M4 卡宾枪', sound:'rifle',
+  { id:'rifle', name:'M4突击步枪', sound:'rifle',
     magSize:30, reserve:210, maxReserve:210, damage:31, headMult:2.0,
     rpm:760, auto:true, semiToggle:true, pellets:1,
     spreadBase:0.0055, spreadMax:0.052, spreadShot:0.0058, spreadRecover:0.075,
@@ -6210,7 +8761,7 @@ const WEAPONS = [
        small enough to hide behind the optic housing. */
     adsFov:38, adsSpread:0.42, adsTime:0.20, noise:36,
     shellBig:false, build:buildRifle },
-  { id:'shotgun', name:'KS-12 泵动', sound:'shotgun',
+  { id:'shotgun', name:'KS-12霰弹枪', sound:'shotgun',
     magSize:8, reserve:48, maxReserve:48, damage:15, headMult:1.7,
     rpm:999, auto:false, semiToggle:false, pellets:9, pumpTime:0.62,
     spreadBase:0.052, spreadMax:0.075, spreadShot:0.006, spreadRecover:0.12,
@@ -6220,7 +8771,7 @@ const WEAPONS = [
     falloffStart:7, falloffRange:16, falloffMin:0.20,
     adsFov:60, adsSpread:0.72, adsTime:0.20, noise:40,
     shellBig:true, build:buildShotgun },
-  { id:'pistol', name:'P-9 手枪', sound:'pistol',
+  { id:'pistol', name:'P226 手枪', sound:'pistol',
     magSize:15, reserve:90, maxReserve:90, damage:35, headMult:2.0,
     rpm:430, auto:false, semiToggle:false, pellets:1,
     spreadBase:0.0028, spreadMax:0.030, spreadShot:0.0060, spreadRecover:0.090,
@@ -6230,7 +8781,7 @@ const WEAPONS = [
     falloffStart:30, falloffRange:45, falloffMin:0.55,
     adsFov:50, adsSpread:0.34, adsTime:0.20, noise:26,
     shellBig:false, build:buildPistol },
-  { id:'sniper', name:'SR-7 长弓', sound:'sniper',
+  { id:'sniper', name:'SR25 狙击步枪', sound:'sniper',
     /* 强袭敌兵现在 155 血：打身体两枪，爆头（×2.0 = 300）仍然一枪带走。
        想恢复「身体一枪一个」就把 damage 抬到 160 以上，但那样狙击会盖过所有步枪。 */
     magSize:5, reserve:25, maxReserve:25, damage:150, headMult:2.0,
@@ -6241,7 +8792,73 @@ const WEAPONS = [
     reloadTime:3.10, drawTime:0.85, shakeAmt:0.80, range:220,
     falloffStart:220, falloffRange:1, falloffMin:1.0,
     adsFov:15, adsSpread:0.012, adsTime:0.20, scope:true, noise:60,
-    shellBig:true, build:buildSniper }
+    shellBig:true, build:buildSniper },
+  /* ---- 新增五把（模型来自用户提供的 HTML 素材）---- */
+  /* FN SCAR-L / Mk 16 Mod 0 · 5.56×45 NATO · 短行程导气活塞 + 自由浮置枪管
+     实枪 852mm / 351mm 枪管 / 3.29kg / 约 620rpm / 30 发 STANAG。
+     比 M4 更稳更准，代价是射速略低、枪身更重（举枪与换弹更慢）。 */
+  { id:'scar_l', name:'FN SCAR-L 突击步枪', sound:'rifle',
+    magSize:30, reserve:210, maxReserve:210, damage:32, headMult:2.0,
+    rpm:620, auto:true, semiToggle:true, pellets:1,
+    spreadBase:0.0048, spreadMax:0.046, spreadShot:0.0052, spreadRecover:0.080,
+    moveSpread:0.010, airSpread:0.020, crouchMult:0.60,
+    recoilKick:0.030, recoilRot:0.048, camPitch:0.0110, camYaw:0.0042, fovKick:0.50,
+    reloadTime:2.35, drawTime:0.62, shakeAmt:0.15, range:150,
+    falloffStart:50, falloffRange:65, falloffMin:0.58,
+    adsFov:38, adsSpread:0.40, adsTime:0.20, noise:38,
+    shellBig:false, build:window.NEW_GUN_BUILDERS.scar_l },
+  /* GLOCK 17 Gen5 · 9×19 Parabellum · 聚合物套筒座 + 安全击针
+     实枪 204mm / 114mm 枪管 / 0.63kg / 17 发 / 双复进簧。
+     比 P226 更轻、出枪更快、后坐更小，单发威力略低。 */
+  { id:'glock17', name:'GLOCK 17 手枪', sound:'pistol',
+    magSize:17, reserve:102, maxReserve:102, damage:33, headMult:2.0,
+    rpm:460, auto:false, semiToggle:false, pellets:1,
+    spreadBase:0.0026, spreadMax:0.028, spreadShot:0.0056, spreadRecover:0.095,
+    moveSpread:0.008, airSpread:0.016, crouchMult:0.53,
+    recoilKick:0.042, recoilRot:0.082, camPitch:0.019, camYaw:0.0055, fovKick:0.78,
+    reloadTime:1.45, drawTime:0.26, shakeAmt:0.21, range:95,
+    falloffStart:28, falloffRange:42, falloffMin:0.52,
+    adsFov:50, adsSpread:0.32, adsTime:0.18, noise:25,
+    shellBig:false, build:window.NEW_GUN_BUILDERS.glock17 },
+  /* AK-47（第 3 型）· 7.62×39 · 长行程导气 + 铣削机匣
+     实枪 870mm / 415mm 枪管 / 3.47kg / 600rpm / 30 发弧形弹匣。
+     中间威力弹单发伤害高、穿透强，代价是后坐大、精度差、枪声更响。 */
+  { id:'ak47', name:'AK-47 突击步枪', sound:'rifle',
+    magSize:30, reserve:180, maxReserve:180, damage:42, headMult:2.0,
+    rpm:600, auto:true, semiToggle:true, pellets:1,
+    spreadBase:0.0072, spreadMax:0.062, spreadShot:0.0075, spreadRecover:0.068,
+    moveSpread:0.012, airSpread:0.024, crouchMult:0.68,
+    recoilKick:0.056, recoilRot:0.080, camPitch:0.0180, camYaw:0.0068, fovKick:0.95,
+    reloadTime:2.45, drawTime:0.66, shakeAmt:0.28, range:130,
+    falloffStart:40, falloffRange:58, falloffMin:0.55,
+    adsFov:42, adsSpread:0.48, adsTime:0.22, noise:44,
+    shellBig:false, build:window.NEW_GUN_BUILDERS.ak47 },
+  /* AA-12 · 12 号霰弹 · 全自动 / 恒定后坐（Constant-Recoil）
+     实枪 966mm / 457mm 枪管 / 4.76kg / 300rpm / 8 发盒式弹匣（亦可 20 发弹鼓）。
+     恒定后坐把肩部冲击压得很低，全自动连喷仍可控；代价是极重、换弹慢。 */
+  { id:'aa12', name:'AA-12 自动霰弹枪', sound:'shotgun',
+    magSize:8, reserve:48, maxReserve:48, damage:13, headMult:1.7,
+    rpm:300, auto:true, semiToggle:true, pellets:9,
+    spreadBase:0.058, spreadMax:0.082, spreadShot:0.006, spreadRecover:0.115,
+    moveSpread:0.014, airSpread:0.026, crouchMult:0.78,
+    recoilKick:0.075, recoilRot:0.110, camPitch:0.028, camYaw:0.008, fovKick:1.7,
+    reloadTime:3.00, drawTime:0.80, shakeAmt:0.46, range:55,
+    falloffStart:7, falloffRange:15, falloffMin:0.20,
+    adsFov:60, adsSpread:0.72, adsTime:0.22, noise:46,
+    shellBig:true, build:window.NEW_GUN_BUILDERS.aa12 },
+  /* Accuracy International AWM · .338 Lapua Magnum · 旋转后拉枪机
+     实枪 1250mm / 686mm 枪管 / 6.8kg（含镜）/ 5 发 / 有效射程 1500m+。
+     枪口动能约 6600J，威力与射程都压过 SR25；代价是拉栓慢、极重、枪声最响。 */
+  { id:'awm', name:'AWM 狙击步枪', sound:'sniper',
+    magSize:5, reserve:20, maxReserve:20, damage:175, headMult:2.0,
+    rpm:999, auto:false, semiToggle:false, pellets:1, boltTime:1.75,
+    spreadBase:0.028, spreadMax:0.068, spreadShot:0.009, spreadRecover:0.095,
+    moveSpread:0.024, airSpread:0.048, crouchMult:0.55,
+    recoilKick:0.210, recoilRot:0.240, camPitch:0.062, camYaw:0.011, fovKick:2.6,
+    reloadTime:3.40, drawTime:0.95, shakeAmt:0.90, range:260,
+    falloffStart:260, falloffRange:1, falloffMin:1.0,
+    adsFov:12, adsSpread:0.010, adsTime:0.24, scope:true, noise:66,
+    shellBig:true, build:window.NEW_GUN_BUILDERS.awm }
 ];
 
 /* build all viewmodels once, keep them parented under the animation rig */
@@ -6270,12 +8887,45 @@ WEAPONS.forEach(w=>{
   w.spread = w.spreadBase;
 });
 
+/* 把商店买的瞄具（红点 / 全息 / 2× / 4× / 热成像）挂到新枪的 3D 视图模型上，
+   并同步开镜对齐高度。原版 4 把枪的 vm 没有 opticAnchor，直接跳过，零回归。
+   - 红点 / 全息 / 倍镜 / 热成像的光学中心都建在 opticAnchor（y = ironYm）上，
+     与铁瞄等高 → 共像对齐，开镜时瞄具中心落在屏幕正中准星上。
+   - 不装瞄具时摘掉 3D 瞄具、用铁瞄对齐。
+   对齐物理：开镜时整枪 py→adsPos.y（再乘 VM_SCALE），而瞄具锚点世界 y =
+   ironYm·k·VM_SCALE（k = vm.boost = body.scale）。二者符号相反、乘上 boost 与
+   VM_SCALE 后恰好抵消，瞄具中心即压到屏幕中心。故 adsPos.y = -(adsYm·boost)·VM_SCALE。 */
+function mountNewOptic(vm, partId){
+  if(!vm || !vm.opticAnchor) return;                 // 仅新枪
+  if(vm.optic && vm.optic.parent) vm.optic.parent.remove(vm.optic);
+  vm.optic = null;
+  const isOptic = partId && (partId==='reddot'||partId==='microdot'||partId==='holo'||
+                              partId==='scope2'||partId==='scope4'||partId==='thermal');
+  if(isOptic && typeof window.NEW_GUN_OPTIC === 'function'){
+    const g = window.NEW_GUN_OPTIC(partId, vm.opticFlip);
+    vm.opticAnchor.add(g);
+    vm.optic = g;
+    vm.optYm = vm.anchorYm;          /* 所有瞄具光学中心同高，无需额外抬升 */
+  } else {
+    vm.optYm = null;
+  }
+  vm.adsYm = (vm.optYm!=null ? vm.optYm : vm.ironYm);
+  /* 符号取负（枪往视线下方移）＋ 乘 boost 抵消 body.scale，再乘 VM_SCALE 与
+     开镜定位同约定。所有瞄具（含铁瞄）共用同一公式，保证全部压到屏幕准星。 */
+  if (typeof VM_SCALE !== 'undefined') vm.adsPos.y = -(vm.adsYm * (vm.boost||1)) * VM_SCALE;
+}
+
 /* weapon HUD icons (tiny inline SVG silhouettes) */
 const WICONS = [
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 8h30l3-3h10v3h23v4H45l-2 3H33l-2-3h-7l-3 7h-5l2-7H2z" fill="#dfe6ec" opacity=".85"/><rect x="20" y="12" width="6" height="7" fill="#dfe6ec" opacity=".85"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h20l4-4h8v4h36v3H34v3h-9l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="34" y="12" width="16" height="3" fill="#dfe6ec" opacity=".85"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M26 5h30v6H44l-2 3h-6l-3 8h-6l3-8h-4z" fill="#dfe6ec" opacity=".85"/></svg>`,
-  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="22" y="2" width="22" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="26" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="37" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/></svg>`
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="22" y="2" width="22" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="26" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="37" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 8h26l3-3h12v3h27v4H43l-2 3H31l-2-3h-7l-3 7h-5l2-7H2z" fill="#dfe6ec" opacity=".85"/><rect x="18" y="3" width="34" height="2" fill="#c9a06a" opacity=".8"/><rect x="20" y="12" width="6" height="7" fill="#dfe6ec" opacity=".85"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><rect x="26" y="5" width="32" height="7" rx="1" fill="#c3cbd2" opacity=".9"/><path d="M30 12h22l-3 7h-9l-3-7z" fill="#8b939a" opacity=".9"/><path d="M28 6v6M32 6v6M36 6v6" stroke="#4a5158" stroke-width="1"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 8h28l3-3h10v3h27v4H43l-2 3H31l-2-3h-7l-3 7h-5l2-7H2z" fill="#dfe6ec" opacity=".85"/><path d="M20 12h9l-2 8h-6z" fill="#a9763f" opacity=".9"/><rect x="44" y="11" width="12" height="8" rx="1" fill="#a9763f" opacity=".9"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h20l4-4h10v4h34v4H36v3h-9l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="34" y="11" width="15" height="8" rx="7" fill="#6f777e" opacity=".9"/><rect x="40" y="6" width="28" height="3" rx="1" fill="#aab2b8" opacity=".85"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="20" y="2" width="26" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="24" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="38" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><path d="M40 19l4-6M48 19l-4-6" stroke="#8b939a" stroke-width="1.4"/></svg>`
 ];
 
 /* =========================================================================
@@ -6985,9 +9635,12 @@ function saveSet(){ try { localStorage.setItem(SET_STORE, JSON.stringify(SET)); 
 /* ---------------- 背包：两把枪 + 一个投掷物 ---------------- */
 const WIDX = {};                                   // 武器 id → WEAPONS 下标
 WEAPONS.forEach((w,i)=>{ WIDX[w.id] = i; });
-const WSHORT = { rifle:'M4', shotgun:'KS-12', pistol:'P9', sniper:'SR-7' };
+const WSHORT = { rifle:'M4', shotgun:'KS-12', pistol:'P226', sniper:'SR25',
+                 scar_l:'SCAR-L', glock17:'G17', ak47:'AK-47', aa12:'AA-12', awm:'AWM' };
 /* 死斗的军械库顺序 = 数字键 1-4；四把枪开局即解锁 */
-const PVP_GUNS = ['rifle','shotgun','pistol','sniper'];
+/* 死斗军械库：原四把 + 新增五把，数字键 1-9 与点弹药栏轮换都可取用 */
+const PVP_GUNS = ['rifle','shotgun','pistol','sniper',
+                  'scar_l','glock17','ak47','aa12','awm'];
 const pvpInfAmmo = ()=> G.mode === 'pvp';
 const INV = { guns:['rifle','pistol'], nades:{ frag:2, flash:0 } };   // 拥有（不一定在槽位里）
 
@@ -8513,17 +11166,17 @@ addEventListener('keydown', e=>{
   if (['Space','KeyR','Digit1','Digit2','Digit3','Digit4','KeyV','Tab','ControlLeft'].includes(e.code)) e.preventDefault();
   if (!G.running || G.paused) return;
   if (e.code==='KeyR') startReload();
-  const di = ['Digit1','Digit2','Digit3','Digit4'].indexOf(e.code);
+  const di = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6',
+              'Digit7','Digit8','Digit9'].indexOf(e.code);
   if (di >= 0){
     if (G.mode === 'pvp' && NET.pvp){
-      /* 死斗：四把枪开局全解锁，1-4 直接拿枪 */
-      equipGun(PVP_GUNS[di]);
-      updateAmmoUI(); refreshTouchUI();
+      /* 死斗：九把枪开局全解锁，1-9 直接拿枪 */
+      if (PVP_GUNS[di]){ equipGun(PVP_GUNS[di]); updateAmmoUI(); refreshTouchUI(); }
     } else if (di === 3){
       /* 4 = 使用药品（军械层） */
       try{ window.useMed && window.useMed(); }catch(_mErr){}
     } else if (di === 2) switchWeaponSlot(2);
-    else switchWeaponSlot(di);
+    else if (di < 2) switchWeaponSlot(di);
   }
   if (e.code==='KeyV'){
     const w = WEAPONS[player.weapon];
@@ -11413,7 +14066,8 @@ function resetWorldState(){
   const mode = G.mode;
   /* 配装：波次生存开局只有一把手枪（枪械要去商店买）；
      其余模式沿用原有配装 —— 全部枪械开局即拥有，随时能塞进两个快捷槽 */
-  INV.guns = mode==='survival' ? ['pistol'] : ['rifle','pistol','shotgun','sniper'];
+  INV.guns = mode==='survival' ? ['pistol']
+             : ['rifle','pistol','shotgun','sniper','scar_l','glock17','ak47','aa12','awm'];
   INV.nades = { frag: mode==='survival' ? 0 : 2, flash: 0 };
   player.slots = mode==='survival' ? ['pistol', null] : ['rifle','pistol'];
   player.nadeKind = 'frag';
@@ -14081,15 +16735,30 @@ const SHOP_ITEMS = [
     can(){ return NET.open && !NET.pvp && player.dead && !player.down; },
     buy(){ selfRevive(); } },
   /* ---- 枪械：只有波次生存才需要买（其他模式开局即拥有全部） ---- */
-  { id:'gun_shotgun', name:'KS-12 霰弹枪', price:650, desc:'8 发弹鼓 · 近距离统治力',
+  { id:'gun_shotgun', name:'KS-12霰弹枪', price:650, desc:'8 发弹鼓 · 近距离统治力',
     can(){ return G.mode === 'survival' && !INV.guns.includes('shotgun') && !player.dead; },
     buy(){ INV.guns.push('shotgun'); equipGun('shotgun'); } },
-  { id:'gun_rifle', name:'M4 卡宾枪', price:900, desc:'30 发全自动 · 中距离主力',
+  { id:'gun_rifle', name:'M4突击步枪', price:900, desc:'30 发全自动 · 中距离主力',
     can(){ return G.mode === 'survival' && !INV.guns.includes('rifle') && !player.dead; },
     buy(){ INV.guns.push('rifle'); equipGun('rifle'); } },
-  { id:'gun_sniper', name:'SR-7 长弓', price:1200, desc:'一枪一个 · 开镜狙杀',
+  { id:'gun_sniper', name:'SR25 狙击步枪', price:1200, desc:'7.62 精确射手 · 开镜狙杀',
     can(){ return G.mode === 'survival' && !INV.guns.includes('sniper') && !player.dead; },
     buy(){ INV.guns.push('sniper'); equipGun('sniper'); } },
+  { id:'gun_glock17', name:'GLOCK 17 手枪', price:350, desc:'17 发 9mm · 轻量快拔副武器',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('glock17') && !player.dead; },
+    buy(){ INV.guns.push('glock17'); equipGun('glock17'); } },
+  { id:'gun_ak47', name:'AK-47 突击步枪', price:1080, desc:'7.62×39 · 高伤害 / 大后坐',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('ak47') && !player.dead; },
+    buy(){ INV.guns.push('ak47'); equipGun('ak47'); } },
+  { id:'gun_scar_l', name:'FN SCAR-L 突击步枪', price:1150, desc:'5.56 活塞导气 · 稳定精准',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('scar_l') && !player.dead; },
+    buy(){ INV.guns.push('scar_l'); equipGun('scar_l'); } },
+  { id:'gun_aa12', name:'AA-12 自动霰弹枪', price:1450, desc:'12 号全自动 · 恒定后坐',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('aa12') && !player.dead; },
+    buy(){ INV.guns.push('aa12'); equipGun('aa12'); } },
+  { id:'gun_awm', name:'AWM 狙击步枪', price:2100, desc:'.338 Lapua · 1500m 级一枪致命',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('awm') && !player.dead; },
+    buy(){ INV.guns.push('awm'); equipGun('awm'); } },
   /* ---- 投掷物 ---- */
   { id:'nade_frag', name:'破片手雷', price:150, desc:'3.6s 引信 · 可掐雷 · 范围 6.4m',
     can(){ return G.mode !== 'pvp' && nadeCount('frag') < 4 && !player.dead; },
@@ -15964,12 +18633,16 @@ const MEDS = {
 };
 
 const AMMO = {
-  '5.56': { name:'5.56mm 弹药盒', price:260, add:60, guns:['rifle','sniper'], icon:'#c9a227',
-            desc:'步枪 / 狙击枪 · 备弹 +60' },
-  '12ga': { name:'12 号霰弹盒',  price:220, add:24, guns:['shotgun'],         icon:'#b4553a',
-            desc:'为 KS-12 补充 24 发备弹' },
-  '9mm' : { name:'9mm 手枪弹盒', price:170, add:45, guns:['pistol'],          icon:'#7ea8c9',
-            desc:'为 P-9 补充 45 发备弹' }
+  '5.56': { name:'5.56mm 弹药盒', price:260, add:60, guns:['rifle','sniper','scar_l'], icon:'#c9a227',
+            desc:'M4 / SR25 / SCAR-L · 备弹 +60' },
+  '12ga': { name:'12 号霰弹盒',  price:220, add:24, guns:['shotgun','aa12'],         icon:'#b4553a',
+            desc:'KS-12 / AA-12 · 备弹 +24' },
+  '9mm' : { name:'9mm 手枪弹盒', price:170, add:45, guns:['pistol','glock17'],       icon:'#7ea8c9',
+            desc:'P226 / GLOCK 17 · 备弹 +45' },
+  '7.62x39': { name:'7.62×39 弹药盒', price:280, add:60, guns:['ak47'], icon:'#b46b3a',
+            desc:'AK-47 专用 · 备弹 +60' },
+  '.338': { name:'.338 Lapua 弹药盒', price:420, add:15, guns:['awm'], icon:'#8f6ab4',
+            desc:'AWM 专用 · 备弹 +15' }
 };
 
 const ARMOR_ITEMS = {
@@ -15996,13 +18669,13 @@ const PARTS = {
   flashhider : { name:'消焰器',      slot:'muzzle', guns:null, price:190, tag:'枪口',
                  desc:'枪口焰完全消失，开火后不易被发现', acc:'#6b737a',
                  mods:{ noise:0.82, flashMul:0 }, vis:{mz:'cone', len:8} },
-  heavycomp  : { name:'重型制退器',  slot:'muzzle', guns:['rifle','sniper'], price:640, tag:'枪口',
+  heavycomp  : { name:'重型制退器',  slot:'muzzle', guns:['rifle','sniper','scar_l','ak47','awm'], price:640, tag:'枪口',
                  desc:'后坐力 -28%，但举枪速度 -15%、移速 -5%', acc:'#5a5f66',
                  mods:{ recoilV:0.72, recoilH:0.78, draw:1.15, moveSpeed:0.95 }, vis:{mz:'comp', len:14} },
-  choke      : { name:'收束器',      slot:'muzzle', guns:['shotgun'], price:300, tag:'枪口',
+  choke      : { name:'收束器',      slot:'muzzle', guns:['shotgun','aa12'], price:300, tag:'枪口',
                  desc:'霰弹散布 -30%，有效射程 +40%', acc:'#8a6f3a',
                  mods:{ spread:0.70, falloff:1.4 }, vis:{mz:'ring', len:8} },
-  bell       : { name:'喇叭口',      slot:'muzzle', guns:['shotgun'], price:170, tag:'枪口',
+  bell       : { name:'喇叭口',      slot:'muzzle', guns:['shotgun','aa12'], price:170, tag:'枪口',
                  desc:'散布 +25%，近距离伤害 +10%', acc:'#8a6f3a',
                  mods:{ spread:1.25, damage:1.10 }, vis:{mz:'bell', len:10} },
 
@@ -16013,19 +18686,19 @@ const PARTS = {
   holo     : { name:'全息瞄准镜',   slot:'optic', guns:null, price:290, tag:'瞄具',
                desc:'开镜速度 +5%，瞄准时移动速度 +10%', acc:'#3f7fb5',
                mods:{ adsTime:0.95, moveSpread:0.90 }, vis:{op:'holo', len:12} },
-  scope2   : { name:'2 倍镜',       slot:'optic', guns:['rifle','sniper'], price:520, tag:'瞄具',
+  scope2   : { name:'2 倍镜',       slot:'optic', guns:['rifle','sniper','scar_l','ak47','awm'], price:520, tag:'瞄具',
                desc:'开镜倍率 ×2，远距离精度 +10%，开镜 -10%', acc:'#6d5a3a',
                mods:{ adsFov:0.55, adsTime:1.10, adsSpread:0.90 }, scoped:true, vis:{op:'scope', len:28} },
-  scope4   : { name:'4 倍镜',       slot:'optic', guns:['rifle','sniper'], price:980, tag:'瞄具',
+  scope4   : { name:'4 倍镜',       slot:'optic', guns:['rifle','sniper','scar_l','ak47','awm'], price:980, tag:'瞄具',
                desc:'倍率 ×4，精度 +20%，开镜 -25%、视野变窄', acc:'#5a4a30',
                mods:{ adsFov:0.30, adsTime:1.25, adsSpread:0.80 }, scoped:true, vis:{op:'scope', len:44} },
-  laser    : { name:'激光指示器',   slot:'optic', guns:['rifle','shotgun','pistol'], price:430, tag:'瞄具',
+  laser    : { name:'激光指示器',   slot:'optic', guns:['rifle','shotgun','pistol','scar_l','glock17','ak47','aa12','awm'], price:430, tag:'瞄具',
                desc:'腰射散布 -30%，瞄准时精度 +5%', acc:'#c98a3a',
                mods:{ spread:0.70, adsSpread:0.95 }, vis:{op:'laser', len:8} },
-  microdot : { name:'微型红点',     slot:'optic', guns:['pistol'], price:180, tag:'瞄具',
+  microdot : { name:'微型红点',     slot:'optic', guns:['pistol','glock17'], price:180, tag:'瞄具',
                desc:'手枪专用：开镜速度 +15%、精度 +8%', acc:'#b04a44',
                mods:{ adsTime:0.85, adsSpread:0.92 }, vis:{op:'dot', len:7} },
-  thermal  : { name:'热成像镜',     slot:'optic', guns:['rifle','sniper'], price:1600, tag:'瞄具',
+  thermal  : { name:'热成像镜',     slot:'optic', guns:['rifle','sniper','scar_l','ak47','awm'], price:1600, tag:'瞄具',
                desc:'2.5 倍热成像 · 开镜时敌人识别距离翻倍，开镜较慢', acc:'#2f7f6a',
                mods:{ adsFov:0.40, adsTime:1.20 }, scoped:true, thermal:true, vis:{op:'thermal', len:38} },
 
@@ -16059,7 +18732,7 @@ const PARTS = {
   m56qext  : { name:'5.56 快速扩容弹匣', slot:'mag', guns:null, caliber:'5.56', price:820, tag:'弹匣',
                desc:'弹容量 +25%，换弹时间 -20%', acc:'#3f7f5f',
                mods:{ mag:1.25, reload:0.80 }, vis:{mg:'quick'} },
-  m56drum  : { name:'鼓形弹匣',     slot:'mag', guns:['rifle'], caliber:'5.56', price:1250, tag:'弹匣',
+  m56drum  : { name:'鼓形弹匣',     slot:'mag', guns:['rifle','scar_l'], caliber:'5.56', price:1250, tag:'弹匣',
                desc:'弹容量 +120%，换弹 +60%，移速 -8%、举枪 -20%', acc:'#6b5a3a',
                mods:{ mag:2.2, reload:1.6, moveSpeed:0.92, draw:1.2 }, vis:{mg:'drum'} },
   m56light : { name:'5.56 轻量弹匣', slot:'mag', guns:null, caliber:'5.56', price:200, tag:'弹匣',
@@ -16073,9 +18746,17 @@ const PARTS = {
                mods:{ mag:1.5, reload:1.2 }, vis:{mg:'long'} },
   m9quick  : { name:'9mm 快速弹匣',  slot:'mag', guns:null, caliber:'9mm', price:320, tag:'弹匣',
                desc:'换弹时间 -30%', acc:'#4d7f6a', mods:{ reload:0.70 }, vis:{mg:'quick'} },
-  loader12 : { name:'快速装填器',   slot:'feed', guns:['shotgun'], price:340, tag:'供弹',
-               desc:'KS-12 专用：弹容 +1（8→9），换弹 -40%', acc:'#8a6f3a',
-               mods:{ magAdd:1, reload:0.6 }, vis:{mg:'none'} }
+  loader12 : { name:'快速装填器',   slot:'feed', guns:['shotgun','aa12'], price:340, tag:'供弹',
+               desc:'霰弹枪专用：弹容 +1，换弹 -40%', acc:'#8a6f3a',
+               mods:{ magAdd:1, reload:0.6 }, vis:{mg:'none'} },
+  m39ext   : { name:'7.62×39 扩容弹匣', slot:'mag', guns:['ak47'], caliber:'7.62x39', price:360, tag:'弹匣',
+               desc:'AK 弹容 +33%（30→40），换弹 +20%', acc:'#8a7a45',
+               mods:{ mag:1.33, reload:1.2 }, vis:{mg:'long'} },
+  m39quick : { name:'7.62×39 快速弹匣', slot:'mag', guns:['ak47'], caliber:'7.62x39', price:400, tag:'弹匣',
+               desc:'AK 换弹时间 -30%', acc:'#4d7f6a', mods:{ reload:0.70 }, vis:{mg:'quick'} },
+  m338ap   : { name:'.338 穿甲弹匣', slot:'mag', guns:['awm'], caliber:'.338', price:880, tag:'弹匣',
+               desc:'AWM 伤害 +8%，弹容 -20%', acc:'#7f4a4a',
+               mods:{ damage:1.08, mag:0.8 }, vis:{mg:'ap'} }
 };
 
 /* 枪械槽位表：每把枪有哪些槽 */
@@ -16083,12 +18764,18 @@ const GUN_SLOTS = {
   rifle  : ['muzzle','optic','grip','mag'],
   shotgun: ['muzzle','optic','grip','feed'],
   pistol : ['muzzle','optic'],
-  sniper : ['muzzle','optic','grip','mag']
+  sniper : ['muzzle','optic','grip','mag'],
+  scar_l : ['muzzle','optic','grip','mag'],
+  glock17: ['muzzle','optic','grip','mag'],
+  ak47   : ['muzzle','optic','grip','mag'],
+  aa12   : ['muzzle','optic','grip','feed'],
+  awm    : ['muzzle','optic','grip','mag']
 };
 const SLOT_CN = { muzzle:'枪口', optic:'瞄具', grip:'握把', mag:'弹匣', feed:'供弹' };
 
 /* 枪械口径（弹匣兼容性用） */
-const GUN_CAL = { rifle:'5.56', sniper:'5.56', shotgun:'12ga', pistol:'9mm' };
+const GUN_CAL = { rifle:'5.56', sniper:'5.56', shotgun:'12ga', pistol:'9mm',
+                  scar_l:'5.56', glock17:'9mm', ak47:'7.62x39', aa12:'12ga', awm:'.338' };
 
 /* 侧视图基础造型：viewBox 内坐标 + 锚点 */
 const GUN_ART = {
@@ -16152,7 +18839,82 @@ const GUN_ART = {
          '<rect x="98" y="18" width="54" height="4" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
          '<path d="M140 18 L143 11.5 L147 11.5 L147 18 Z" fill="#8b939a"/>'+
          '<path d="M48 27 Q48 35 56 35 L59 35 L59 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
-    mz:{x:152,y:20}, op:{x:44,y:14}, mg:{x:50,y:27}, gr:{x:24,y:27} }
+    mz:{x:152,y:20}, op:{x:44,y:14}, mg:{x:50,y:27}, gr:{x:24,y:27} },
+  /* ---- 新增五把枪的侧视图（商店 / 背包 / 改装界面共用） ---- */
+  scar_l : { vb:'0 0 140 46',
+    gripDef:'<path d="M20 26 L30 26 L27 41 L18 41 Z" fill="#8b7a5e" stroke="#262c31" stroke-width=".9"/>',
+    magDef :'<path d="M36 27 L48 27 L46 41 L38 41 Z" fill="#6d757c" stroke="#262c31" stroke-width=".9"/>',
+    body:'<path d="M2 18 L14 14 L18 16 L18 28 L4 31 Z" fill="#8b7a5e" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="16" y="14" width="48" height="13" rx="1.5" fill="#9b8a6c" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="16" y="14" width="48" height="3.4" fill="#c3b291"/>'+
+         '<rect x="16" y="10" width="52" height="3" rx=".8" fill="#4d545a"/>'+
+         '<path d="M18 10 v-2 M24 10 v-2 M30 10 v-2 M36 10 v-2 M42 10 v-2 M48 10 v-2 M54 10 v-2 M60 10 v-2" stroke="#6b737a" stroke-width="1.2"/>'+
+         '<rect x="28" y="17" width="16" height="5" rx="1" fill="#39414a"/>'+
+         '<rect x="64" y="15" width="40" height="11" rx="2" fill="#8b7a5e" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="64" y="15" width="40" height="3" fill="#b3a280"/>'+
+         '<rect x="104" y="18.5" width="26" height="4.5" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M112 18.5 L116 11 L120 11 L120 18.5 Z" fill="#8b939a"/>'+
+         '<path d="M44 27 Q44 35 52 35 L55 35 L55 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:130,y:20.5}, op:{x:50,y:12}, mg:{x:52,y:28}, gr:{x:22,y:27} },
+
+  glock17: { vb:'0 0 84 46',
+    gripDef:'<path d="M14 28 L32 28 L28 43 L12 43 Z" fill="#2c3034" stroke="#262c31" stroke-width=".9"/>'+
+            '<path d="M16 33 L29 33 M16 37 L28 37" stroke="#454b51" stroke-width="1.1"/>',
+    magDef :'<rect x="13" y="41" width="16" height="2.6" rx=".8" fill="#4d545a"/>',
+    body:'<rect x="10" y="12" width="56" height="11" rx="1.5" fill="#3c4248" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="10" y="12" width="56" height="3.2" fill="#596169"/>'+
+         '<path d="M14 13 L14 22 M18 13 L18 22 M22 13 L22 22" stroke="#20252a" stroke-width="1.3"/>'+
+         '<path d="M58 13 L61 13 M58 16 L61 16 M58 19 L61 19" stroke="#20252a" stroke-width="1.1"/>'+
+         '<rect x="62" y="15" width="9" height="5" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M58 12 L60 8 L63 8 L63 12 Z" fill="#8b939a"/>'+
+         '<rect x="12" y="23" width="44" height="5.5" rx="1" fill="#2c3034" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M26 28.5 Q26 37 33 37 L36 37 L36 28.5" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:70,y:17.5}, op:{x:40,y:12}, mg:{x:21,y:29}, gr:{x:21,y:29} },
+
+  ak47   : { vb:'0 0 140 46',
+    gripDef:'<path d="M20 26 L30 26 L27 41 L18 41 Z" fill="#8a5f36" stroke="#262c31" stroke-width=".9"/>',
+    magDef :'<path d="M40 27 L52 27 L54 40 L44 42 Z" fill="#5b6167" stroke="#262c31" stroke-width=".9"/>',
+    body:'<path d="M2 19 L16 15 L21 17 L21 29 L5 32 Z" fill="#8a5f36" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="18" y="14" width="46" height="13" rx="1.5" fill="#4a5057" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="18" y="14" width="46" height="3.2" fill="#697178"/>'+
+         '<rect x="30" y="17" width="14" height="5" rx="1" fill="#20252a"/>'+
+         '<rect x="62" y="15" width="34" height="8" rx="1.5" fill="#8a5f36" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="96" y="16" width="14" height="6" rx="1" fill="#4a5057"/>'+
+         '<rect x="110" y="18.5" width="22" height="4" rx="1" fill="#aab2b8" stroke="#262c31" stroke-width=".8"/>'+
+         '<path d="M128 18.5 L132 16 L134 18.5 Z" fill="#8b939a"/>'+
+         '<path d="M44 27 Q44 35 52 35 L55 35 L55 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>'+
+         '<path d="M36 22 h6 M36 25 h6" stroke="#5d4530" stroke-width="1"/>',
+    mz:{x:132,y:20.5}, op:{x:46,y:14}, mg:{x:46,y:28}, gr:{x:22,y:27} },
+
+  aa12   : { vb:'0 0 150 46',
+    gripDef:'<path d="M26 27 L36 27 L33 42 L24 42 Z" fill="#3a4046" stroke="#262c31" stroke-width=".9"/>',
+    magDef :'<circle cx="86" cy="30" r="9" fill="#4a5057" stroke="#262c31" stroke-width=".9"/><circle cx="86" cy="30" r="3.2" fill="#2a2f34"/>',
+    body:'<path d="M2 19 L16 15 L21 17 L21 29 L5 32 Z" fill="#3a4046" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="20" y="13" width="46" height="16" rx="2" fill="#2e343a" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="20" y="13" width="46" height="3.4" fill="#4b535b"/>'+
+         '<rect x="30" y="18" width="14" height="5" rx="1" fill="#171b1f"/>'+
+         '<rect x="66" y="15" width="52" height="9" rx="3" fill="#3f464d" stroke="#262c31" stroke-width=".9"/>'+
+         '<path d="M70 17 h44 M70 21 h44" stroke="#20252a" stroke-width="1"/>'+
+         '<rect x="118" y="16" width="12" height="7" rx="1" fill="#6b737a"/>'+
+         '<rect x="130" y="18" width="12" height="3" rx="1" fill="#aab2b8"/>',
+    mz:{x:140,y:19}, op:{x:42,y:13}, mg:{x:86,y:30}, gr:{x:31,y:28} },
+
+  awm    : { vb:'0 0 166 46',
+    gripDef:'<path d="M24 26 L34 26 L31 41 L22 41 Z" fill="#6b7361" stroke="#262c31" stroke-width=".9"/>',
+    magDef :'<path d="M40 27 L50 27 L48 38 L42 38 Z" fill="#5f6756" stroke="#262c31" stroke-width=".9"/>',
+    body:'<path d="M2 18 L18 13 L26 15 L26 29 L6 32 Z" fill="#6b7361" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="8" y="10" width="30" height="5" rx="2" fill="#2f363c"/>'+
+         '<rect x="12" y="8" width="8" height="9" rx="1.5" fill="#454d54"/>'+
+         '<rect x="30" y="8" width="8" height="9" rx="1.5" fill="#454d54"/>'+
+         '<rect x="26" y="14" width="40" height="13" rx="1.5" fill="#6b7361" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="26" y="14" width="40" height="3.4" fill="#8c9580"/>'+
+         '<rect x="34" y="17" width="14" height="5" rx="1" fill="#39414a"/>'+
+         '<rect x="66" y="16" width="38" height="9" rx="2" fill="#6b7361" stroke="#262c31" stroke-width=".9"/>'+
+         '<rect x="104" y="18" width="54" height="4" rx="1" fill="#9aa2a8" stroke="#262c31" stroke-width=".8"/>'+
+         '<rect x="150" y="16" width="10" height="8" rx="1" fill="#4a5158"/>'+
+         '<path d="M96 27 L90 40 M104 27 L110 40" stroke="#5a6158" stroke-width="1.6"/>'+
+         '<path d="M48 27 Q48 35 56 35 L59 35 L59 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
+    mz:{x:160,y:20}, op:{x:44,y:10}, mg:{x:50,y:27}, gr:{x:24,y:27} }
 };
 
 /* ============================ 状态 ============================ */
@@ -16363,6 +19125,8 @@ function applyMods(gunId){
   w.scope   = !!b.scope || !!(optDef && optDef.scoped);
   w.thermal = !!(optDef && optDef.thermal);
   if(w.mag > w.magSize) w.mag = w.magSize;
+  /* 装备的瞄具配件变了 → 3D 视图模型实时挂载 / 摘下，并同步开镜对齐 */
+  if (typeof mountNewOptic === 'function') mountNewOptic(w.vm, optId);
 }
 /** 枪械数值变化表（改装界面用） */
 function gunStatRows(gunId){
@@ -16639,8 +19403,13 @@ function shopItems(){
   const gunInfo = {
     rifle  : { price:900, desc:'30 发全自动 · 中距离主力' },
     shotgun: { price:650, desc:'泵动霰弹 · 近距离统治力' },
-    sniper : { price:1200, desc:'栓动一枪一个 · 开镜狙杀' },
-    pistol : { price:0,   desc:'基础手枪 · 各模式默认配发' }
+    sniper : { price:1200, desc:'7.62 精确射手 · 开镜狙杀' },
+    pistol : { price:0,   desc:'基础手枪 · 各模式默认配发' },
+    glock17: { price:350,  desc:'17 发 9mm · 聚合物轻量快拔' },
+    ak47   : { price:1080, desc:'7.62×39 · 30 发弧形弹匣 · 高伤害' },
+    scar_l : { price:1150, desc:'5.56×45 · 短行程活塞 · 低后坐高精度' },
+    aa12   : { price:1450, desc:'12 号全自动 · 恒定后坐 · 8 发弹匣' },
+    awm    : { price:2100, desc:'.338 Lapua · 栓动 · 5 发 · 最远射程' }
   };
   for(const id in gunInfo){
     const gi = gunInfo[id];
