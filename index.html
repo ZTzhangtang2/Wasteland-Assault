@@ -9092,35 +9092,213 @@ window.varInitMats = function(){
   VAR_MAT.scorch = mk(0x14171a, .30, .70);
 }
 
-/* 镜筒：外管 + 两端厚环 + 一片「玻璃」。玻璃用低不透明度、不写深度，
-   瞄具内部再补一圈内壁（DoubleSide），所以开镜时能直接看到目标。 */
+/* 圆角矩形路径（给全息护罩的窗框用）。顺时针画，Path/Shape 都能直接用。 */
+function roundRectPath(path, cx, cy, w, h, r){
+  const x = cx - w/2, y = cy - h/2;
+  path.moveTo(x + r, y);
+  path.lineTo(x + w - r, y);
+  path.absarc(x + w - r, y + r, r, -Math.PI/2, 0, false);
+  path.lineTo(x + w, y + h - r);
+  path.absarc(x + w - r, y + h - r, r, 0, Math.PI/2, false);
+  path.lineTo(x + r, y + h);
+  path.absarc(x + r, y + h - r, r, Math.PI/2, Math.PI, false);
+  path.lineTo(x, y + r);
+  path.absarc(x + r, y + r, r, Math.PI, Math.PI*1.5, false);
+  return path;
+}
+/* 带内孔的圆角矩形挤出体：全息瞄具前后那两道「窗框」 */
+function frameRing(w, h, r, thick, depth){
+  const sh = new T.Shape();
+  roundRectPath(sh, 0, 0, w, h, r);
+  const hole = new T.Path();
+  roundRectPath(hole, 0, 0, w - thick*2, h - thick*2, Math.max(0.0015, r - thick));
+  sh.holes.push(hole);
+  const geo = new T.ExtrudeGeometry(sh, { depth:depth, bevelEnabled:false, curveSegments:10 });
+  geo.translate(0, 0, -depth/2);
+  return geo;
+}
+
+/* 镜片分划着色器：分划不是贴在镜片上的贴图，而是按「视线与枪膛轴的夹角」
+   在片元里实时画的。所以贴眼时红点永远压在弹道上，偏头也不会像贴纸一样
+   跟着镜片滑走（真实红点的无视差原理）。玻璃本身带二向色镀膜、菲涅耳
+   反射和一圈暗边，而不是一块发青的半透明塑料片。 */
+window.makeSightGlass = function(style){
+  const holo = style === 'holo';
+  const mat = new T.ShaderMaterial({
+    transparent:true, depthWrite:false, side:T.DoubleSide, premultipliedAlpha:true,
+    uniforms:{
+      uBright:{ value: holo ? 1.8 : 1.6 },
+      uHolo  :{ value: holo ? 1.0 : 0.0 },
+      uSee   :{ value: 0.0 },            // 开镜：玻璃压到最透，目标直接穿进来
+      uTilt  :{ value: 0.10 },           // 真实瞄具的镜片都不是垂直于枪膛
+      uSun   :{ value: new T.Vector3(0.34, 0.68, 0.65).normalize() },
+      uSunCol:{ value: new T.Color(0xffeedd) },
+      uZen   :{ value: new T.Color(0xb9cbe0) },
+      uHor   :{ value: new T.Color(0xd8c7ac) },
+      uRetCol:{ value: new T.Color(holo ? 0xff2a0c : 0xff1e08) }
+    },
+    vertexShader: [
+      'varying vec3 vView, vFwd, vRight, vUp, vWPos, vWN;',
+      'varying vec2 vUv;',
+      'uniform float uTilt;',
+      'void main(){',
+      '  vUv = uv;',
+      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+      '  vView = mv.xyz;',
+      '  vec3 fw = (modelViewMatrix * vec4(0.0, 0.0, -1.0, 0.0)).xyz;',
+      '  if (dot(fw, mv.xyz) < 0.0) fw = -fw;',   // 瞄具被翻转安装时也能指向远离眼睛的一侧
+      '  vFwd = fw;',
+      '  vRight = (modelViewMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz;',
+      '  vUp = (modelViewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;',
+      '  vWPos = (modelMatrix * vec4(position, 1.0)).xyz;',
+      '  vWN = normalize(mat3(modelMatrix) * normalize(vec3(0.0, -uTilt, 1.0)));',
+      '  gl_Position = projectionMatrix * mv;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'varying vec3 vView, vFwd, vRight, vUp, vWPos, vWN;',
+      'varying vec2 vUv;',
+      'uniform float uBright, uHolo, uSee, uTilt;',
+      'uniform vec3 uSun, uSunCol, uZen, uHor, uRetCol;',
+      'void main(){',
+      '  vec3 d = normalize(vView);',
+      '  vec3 fw = normalize(vFwd);',
+      '  float k = max(dot(d, fw), 1e-3);',
+      /* 视线相对枪膛轴的切向偏移：0 = 正对弹道，也就是红点该在的位置 */
+      '  vec2 a = vec2(dot(d, normalize(vRight)), dot(d, normalize(vUp))) / k;',
+      '  float r = length(a);',
+      '  float px = max(fwidth(r), 1e-5);',
+      /* 中心点：约 8 MOA 的亮点，边缘用 fwidth 抗锯齿，不会随距离糊成一团 */
+      '  float dotR = max(mix(0.00125, 0.00130, uHolo), px * 0.9);',
+      '  float dotI = 1.0 - smoothstep(dotR - px, dotR + px, r);',
+      '  float rw = max(0.00044, px * 0.55);',
+      '  float rr = mix(0.0115, 0.0118, uHolo);',
+      '  float ringI = mix(0.60, 0.88, uHolo);',
+      '  float tickEnd = rr + 0.0034;',
+      '  float ring = 1.0 - smoothstep(rw - px * 0.5, rw + px, abs(r - rr));',
+      '  float tick = (1.0 - smoothstep(0.0, px * 1.1 + 0.0003, min(abs(a.x), abs(a.y))))',
+      '             * step(rr, r) * (1.0 - smoothstep(tickEnd, tickEnd + 0.0010, r));',
+      '  float ret = clamp(dotI + ring * ringI + tick * 0.7, 0.0, 1.0);',
+      '  ret += 0.05 * exp(-r * r / 0.00002);',   // 一圈很淡的光晕，给泛光留点抓手
+      '  vec3 retCol = uRetCol * ret * uBright;',
+      /* 镀膜玻璃：天光 / 阳光按菲涅耳反射叠上去，掠射角更亮 */
+      '  vec3 wv = normalize(vWPos - cameraPosition);',
+      '  vec3 n = normalize(vWN);',
+      '  if (dot(n, wv) > 0.0) n = -n;',
+      '  vec3 rf = reflect(wv, n);',
+      '  float fres = pow(1.0 - abs(dot(wv, n)), 3.0);',
+      '  vec3 sky = mix(uHor, uZen, clamp(rf.y * 1.4 + 0.2, 0.0, 1.0));',
+      '  float sd = max(dot(rf, uSun), 0.0);',
+      '  sky += uSunCol * (pow(sd, 6.0) * 0.6 + pow(sd, 90.0) * 6.0);',
+      /* 蓝→琥珀的二向色镀膜、一道柔和的斜向高光带、以及最外圈暗边 */
+      '  float band = smoothstep(0.25, 0.5, vUv.x * 0.6 + vUv.y) * (1.0 - smoothstep(0.62, 0.95, vUv.x * 0.6 + vUv.y));',
+      '  vec3 coat = mix(vec3(0.30, 0.50, 0.95), vec3(1.0, 0.62, 0.28), clamp(fres * 2.2 + vUv.y * 0.75 - 0.15, 0.0, 1.0));',
+      '  vec2 e = abs(vUv - 0.5) * 2.0;',
+      '  float edge = smoothstep(0.90, 1.0, max(e.x, e.y));',
+      '  float refl = 0.12 + 0.60 * fres + 0.07 * band;',
+      /* 腰射时从发光器那一头透出来的余辉，和真红点一样「一直亮着」 */
+      '  vec2 eg = (vUv - vec2(0.5, 0.16)) * vec2(1.0, 1.6);',
+      '  retCol += uRetCol * 0.12 * exp(-dot(eg, eg) * 60.0) * (1.0 - smoothstep(0.985, 0.9995, k));',
+      '  vec3 col = (sky * 1.35 + vec3(0.03, 0.035, 0.045)) * coat * refl * (1.0 - edge) + retCol;',
+      '  float alpha = clamp(0.15 + 0.30 * fres + 0.05 * band + 0.6 * edge, 0.0, 0.94);',
+      '  alpha *= mix(1.0, 0.55, uSee);',
+      /* 分划本身单独占一层 alpha：不然在亮天空前，加色叠加的红点会被冲成白点 */
+      '  float retA = clamp(dotI * 0.95 + ring * 0.82 + tick * 0.75, 0.0, 0.95);',
+      '  alpha = max(alpha, retA);',
+      /* premultipliedAlpha：输出必须自己先乘 alpha，否则天空反射会整片冲成白色 */
+      '  gl_FragColor = vec4(col * alpha, alpha);',
+      '}'
+    ].join('\n')
+  });
+  /* fwidth() 在 WebGL1 下要显式开导数扩展 */
+  mat.extensions = { derivatives: true };
+  return mat;
+};
+
+/* 现代筒式红点（Aimpoint / Holosun 那种）：前后开口的哑光筒身，物镜圈外扩
+   并带一圈橡胶防撞环，顶部弹道鼓、侧面风偏鼓都有滚花，底下是一体式镜桥 +
+   横栓锁。镜片用程序化分划，不再往管子里塞一个发光小球。 */
 window.makeTubeOptic = function(opt){
   varInitMats();
-  const tubeLen = opt.tubeLen !== undefined ? opt.tubeLen : 0.082;
-  const tubeR   = opt.tubeR   !== undefined ? opt.tubeR   : 0.019;
+  opt = opt || {};
+  const micro = !!opt.micro;
+  const R = opt.tubeR !== undefined ? opt.tubeR : (micro ? 0.0145 : 0.0185);
+  const L = opt.tubeLen !== undefined ? opt.tubeLen : (micro ? 0.044 : 0.058);
   const g = new T.Group();
-  const L = tubeLen, R = tubeR;
-  const wall = varMat(0x232a30, .55, .45);
-  wall.side = T.DoubleSide;                    // 内壁也要画，否则从目镜看进去是黑洞
-  const tube = new T.Mesh(new T.CylinderGeometry(R, R, L, 22, 1, true), wall);
-  tube.rotation.x = Math.PI/2; g.add(tube);
-  /* 前后两圈加厚：真实红点就是这个「两头厚、中间薄」的轮廓。
-     这里必须用「环形圈」（Torus）而不是实心圆柱 —— 圆柱的端盖会把管腔
-     整个封死，从目镜看过去就是一块不透明的黑片，镜片再透也看不到目标。 */
-  const r1 = new T.Mesh(new T.TorusGeometry(R+0.0012, 0.0035, 8, 24), VAR_MAT.ring);
-  r1.position.z = -L/2 + 0.004; g.add(r1);
-  const r2 = new T.Mesh(new T.TorusGeometry(R+0.0012, 0.0030, 8, 24), VAR_MAT.ring);
-  r2.position.z =  L/2 - 0.004; g.add(r2);
-  /* 玻璃贴在物镜端内侧，略小于内径 —— 不封口，所以视线从管腔里直接穿过去 */
-  const glass = new T.Mesh(new T.CylinderGeometry(R-0.0015, R-0.0015, 0.0015, 22), VAR_MAT.glass.clone());
-  glass.rotation.x = Math.PI/2; glass.position.z = -L/2 + 0.013; g.add(glass);
-  const dot = new T.Mesh(new T.SphereGeometry(0.0030, 10, 8),
-                         new T.MeshBasicMaterial({ color: opt.dotColor || 0xff3320, depthTest:false }));
-  dot.position.set(0, 0, -L/2 + 0.016); dot.renderOrder = 999; g.add(dot);
-  const glow = new T.Sprite(new T.SpriteMaterial({ color: opt.dotColor || 0xff3320, map:RED_DOT_TEX,
-    transparent:true, blending:T.AdditiveBlending, depthWrite:false, depthTest:false, opacity:.9 }));
-  glow.scale.set(0.014, 0.014, 1); glow.position.copy(dot.position); glow.renderOrder = 1000; g.add(glow);
-  return { group:g, glass:glass.material, dot, glow, L, R };
+
+  const shell = varMat(0x030406, .24, .78);      // 哑光阳极氧化铝
+  const trim  = varMat(0x090c10, .36, .60);      // 圈口 / 调节鼓
+  const dark  = varMat(0x020304, .08, .85);      // 镜筒内壁
+  const rubber= varMat(0x060708, .02, .90);      // 防撞胶圈
+  shell.side = T.DoubleSide; dark.side = T.DoubleSide;
+
+  const ringMesh = (mat, r, t, z) => {
+    const m = new T.Mesh(new T.TorusGeometry(r, t, 10, 36), mat);
+    m.position.z = z; g.add(m); return m;
+  };
+
+  /* 筒体：物镜端略粗、目镜端略收，不再是一根等径钢管；两端开口，视线直接穿过去 */
+  const body = new T.Mesh(new T.CylinderGeometry(R*0.99, R*1.02, L, 40, 1, true), shell);
+  body.rotation.x = Math.PI/2; g.add(body);
+  const bore = new T.Mesh(new T.CylinderGeometry(R*0.925, R*0.955, L*0.99, 40, 1, true), dark);
+  bore.rotation.x = Math.PI/2; g.add(bore);
+
+  /* 物镜圈外扩 + 橡胶环；目镜圈做薄一点的内倒角 */
+  ringMesh(trim, R*1.03, 0.0030, -L/2 + 0.0025);
+  ringMesh(rubber, R*1.06, 0.0026, -L/2 + 0.0042);
+  ringMesh(trim, R*0.985, 0.0026, L/2 - 0.0025);
+  const bell = new T.Mesh(new T.CylinderGeometry(R*1.02, R*1.06, 0.010, 40, 1, true), shell);
+  bell.rotation.x = Math.PI/2; bell.position.z = -L/2 + 0.008; g.add(bell);
+
+  /* 镜片：程序化分划。装在物镜后侧，后面留出目镜空腔 */
+  const gm = makeSightGlass('dot');
+  const glass = new T.Mesh(new T.CircleGeometry(R*0.945, 40), gm);
+  glass.position.z = -L/2 + 0.0145; g.add(glass);
+
+  /* 调节鼓：底座 + 滚花旋钮，顶部弹道、侧面风偏 */
+  const knob = (r, h, x, y, z, axis) => {
+    const k = new T.Group();
+    const base = new T.Mesh(new T.CylinderGeometry(r, r*1.10, h*0.55, 24), trim);
+    base.position.y = h*0.22; k.add(base);
+    const cap = new T.Mesh(new T.CylinderGeometry(r*0.98, r*0.98, h*0.55, 24), shell);
+    cap.position.y = h*0.68; k.add(cap);
+    for (let i=0;i<18;i++){
+      const a = i/18*Math.PI*2;
+      const rib = new T.Mesh(new T.BoxGeometry(0.0015, h*0.44, 0.0011), trim);
+      rib.position.set(Math.cos(a)*r*0.99, h*0.68, Math.sin(a)*r*0.99);
+      rib.rotation.y = -a; k.add(rib);
+    }
+    k.position.set(x, y, z);
+    if (axis === 'x') k.rotation.z = -Math.PI/2;
+    g.add(k); return k;
+  };
+  knob(0.0086, 0.016, 0, R + 0.001, 0.002, 'y');            // 顶部弹道鼓
+  knob(0.0074, 0.014, R + 0.001, -0.001, 0.004, 'x');       // 右侧风偏鼓
+
+  /* 左侧电池仓：一块贴合筒身的凸台 + 旋盖 */
+  const tray = new T.Mesh(new T.BoxGeometry(0.0058, 0.016, 0.021), shell);
+  tray.position.set(-R - 0.0008, -0.0045, 0.011); g.add(tray);
+  const trayCap = new T.Mesh(new T.CylinderGeometry(0.0068, 0.0068, 0.0034, 20), trim);
+  trayCap.rotation.z = Math.PI/2; trayCap.position.set(-R - 0.0038, -0.0045, 0.011); g.add(trayCap);
+
+  /* 一体式镜桥：立柱 + 导轨夹块 + 横栓 / 螺母 + 快拆扳手 */
+  const riser = new T.Mesh(new T.BoxGeometry(micro?0.022:0.026, 0.011, micro?0.030:0.038), shell);
+  riser.position.set(0, -R - 0.0035, 0.002); g.add(riser);
+  const clampB = new T.Mesh(new T.BoxGeometry(micro?0.026:0.032, 0.009, micro?0.036:0.046), trim);
+  clampB.position.set(0, -R - 0.0125, 0.002); g.add(clampB);
+  const bolt = new T.Mesh(new T.CylinderGeometry(0.0033, 0.0033, 0.036, 14), dark);
+  bolt.rotation.z = Math.PI/2; bolt.position.set(0, -R - 0.0125, 0.011); g.add(bolt);
+  const nut = new T.Mesh(new T.CylinderGeometry(0.0048, 0.0048, 0.005, 6), trim);
+  nut.rotation.z = Math.PI/2; nut.position.set(0.0175, -R - 0.0125, 0.011); g.add(nut);
+  const lever = new T.Mesh(new T.BoxGeometry(0.0055, 0.013, 0.019), trim);
+  lever.position.set(-0.018, -R - 0.013, 0.002); lever.rotation.x = 0.18; g.add(lever);
+  for (const sx of [-1, 1]){
+    const sc = new T.Mesh(new T.CylinderGeometry(0.0026, 0.0026, 0.0032, 6), trim);
+    sc.rotation.z = Math.PI/2;
+    sc.position.set(sx * (micro?0.012:0.014), -R - 0.0035, 0.014); g.add(sc);
+  }
+
+  return { group:g, glass:[gm], dot:null, glow:null, L, R };
 }
 
 /* 各瞄具造型。返回 { group, glass }；glass 是可以在开镜时调透明的材质数组。 */
@@ -9131,43 +9309,65 @@ window.buildOpticVisual = function(partId){
   const glassMats = [];
   if (partId === 'reddot' || partId === 'microdot'){
     const small = partId === 'microdot';
-    const o = makeTubeOptic({ tubeLen: small ? 0.052 : 0.062, tubeR: small ? 0.015 : 0.018 });
-    g.add(o.group); glassMats.push(o.glass);
-    /* 底座：夹住导轨的燕尾块。宽度比镜筒略大一点，俯视才看得到「镜桥」 */
-    const h = 0.013;
-    const base = new T.Mesh(new T.BoxGeometry(small?0.024:0.028, h, small?0.044:0.056), VAR_MAT.body);
-    base.position.y = -o.R - h/2 + 0.002; g.add(base);
-    const clampL = new T.Mesh(new T.BoxGeometry(small?0.026:0.030, 0.008, 0.010), VAR_MAT.ring);
-    clampL.position.set(0, -o.R - h + 0.001, 0); g.add(clampL);
-    if (!small){                                   // 顶部调节钮，侧面看得出是红点
-      const tur = new T.Mesh(new T.CylinderGeometry(0.006,0.006,0.012,10), VAR_MAT.ring);
-      tur.position.set(0, o.R + 0.004, 0.008); g.add(tur);
-      const side = new T.Mesh(new T.CylinderGeometry(0.005,0.005,0.012,10), VAR_MAT.ring);
-      side.rotation.z = Math.PI/2; side.position.set(o.R + 0.003, 0, 0.008); g.add(side);
-    }
-    g.userData.dot = o.dot; g.userData.glow = o.glow;
+    const o = makeTubeOptic({ tubeLen: small ? 0.046 : 0.058,
+                              tubeR:   small ? 0.0145 : 0.0185, micro: small });
+    g.add(o.group);
+    for (const m of o.glass) glassMats.push(m);
+    /* 镜桥已经在 makeTubeOptic 里做成一体的，这里不再补底座，
+       否则导轨夹块会叠两层、侧面鼓出来一块方盒子。 */
   } else if (partId === 'holo'){
-    /* 全息：方形窗 + 前面一块近乎无色的镜片 + 青色分划 */
-    const L = 0.074, W = 0.040, H = 0.032;
-    const frm = varMat(0x272e35, .60, .40);
-    const mk = (w,h,d,x,y,z)=>{ const m=new T.Mesh(new T.BoxGeometry(w,h,d), frm); m.position.set(x,y,z); g.add(m); return m; };
-    mk(W, 0.006, L, 0, H/2, 0);                    // 上框
-    mk(W, 0.005, L, 0, -H/2, 0);                   // 下框（压在底座上）
-    mk(0.005, H, L, -W/2+0.0025, 0, 0);
-    mk(0.005, H, L,  W/2-0.0025, 0, 0);
-    const gm = VAR_MAT.glass.clone();
-    const glass = new T.Mesh(new T.PlaneGeometry(W-0.01, H-0.01), gm);
-    glass.position.set(0, 0, -L/2 + 0.012); g.add(glass); glassMats.push(gm);
-    const ret = new T.Mesh(new T.TorusGeometry(0.0065, 0.0011, 6, 20),
-                           new T.MeshBasicMaterial({ color:0x33d6ff, transparent:true, opacity:.95,
-                                                     depthTest:false, depthWrite:false }));
-    ret.position.set(0, 0, -L/2 + 0.014); ret.renderOrder = 1000; g.add(ret);
-    const dot = new T.Mesh(new T.SphereGeometry(0.0016, 8, 6),
-                           new T.MeshBasicMaterial({ color:0x33d6ff, depthTest:false }));
-    dot.position.copy(ret.position); dot.renderOrder = 999; g.add(dot);
-    const base = new T.Mesh(new T.BoxGeometry(0.026, 0.014, 0.052), VAR_MAT.body);
-    base.position.y = -(H/2) - 0.007; g.add(base);
-    g.userData.dot = dot; g.userData.glow = null;
+    /* 全息（EOTech 那种）：前后两道圆角窗框 + 顶 / 底 / 两侧护罩连成一体，
+       右侧电池仓带两颗按钮，底下是快拆镜桥。镜片里是 68 MOA 圆环分划。 */
+    const L = 0.064, W = 0.050, H = 0.041;
+    const shell = varMat(0x030406, .24, .78);
+    const trim  = varMat(0x090c10, .36, .60);
+    const dark  = varMat(0x020304, .08, .85);
+    shell.side = T.DoubleSide;
+
+    const front = new T.Mesh(frameRing(W, H, 0.008, 0.0050, 0.0075), shell);
+    front.position.z = -L/2 + 0.0038; g.add(front);
+    const rear = new T.Mesh(frameRing(W, H, 0.008, 0.0045, 0.0055), shell);
+    rear.position.z = L/2 - 0.0028; g.add(rear);
+
+    const top = new T.Mesh(new T.BoxGeometry(W - 0.001, 0.006, L - 0.006), shell);
+    top.position.set(0, H/2 - 0.0015, 0); g.add(top);
+    const bot = new T.Mesh(new T.BoxGeometry(W - 0.001, 0.007, L - 0.006), shell);
+    bot.position.set(0, -H/2 + 0.0015, 0); g.add(bot);
+    for (const sx of [-1, 1]){
+      const side = new T.Mesh(new T.BoxGeometry(0.0055, H - 0.004, L - 0.010), shell);
+      side.position.set(sx * (W/2 - 0.0028), 0, 0); g.add(side);
+    }
+    /* 窗框上沿一道细缝：护罩不至于是一块死板的方盒 */
+    const seamF = new T.Mesh(new T.BoxGeometry(W*0.55, 0.0012, 0.0012), dark);
+    seamF.position.set(0, H/2 + 0.0015, -L/2 + 0.0075); g.add(seamF);
+
+    const gm = makeSightGlass('holo');
+    const glass = new T.Mesh(new T.PlaneGeometry(W - 0.012, H - 0.012), gm);
+    glass.position.set(0, 0, -L/2 + 0.0165); g.add(glass); glassMats.push(gm);
+
+    /* 右侧电池仓 + 两颗亮度 / 夜视按钮 */
+    const bx = W/2 + 0.008;
+    const bat = new T.Mesh(new T.BoxGeometry(0.016, 0.030, 0.034), shell);
+    bat.position.set(bx, -0.002, 0.004); g.add(bat);
+    for (let i=0;i<2;i++){
+      const btn = new T.Mesh(new T.CylinderGeometry(0.0034, 0.0034, 0.0030, 14), trim);
+      btn.rotation.x = Math.PI/2;
+      btn.position.set(bx + (i ? 0.0045 : -0.0045), 0.009, 0.0215); g.add(btn);
+    }
+    const bcap = new T.Mesh(new T.CylinderGeometry(0.0090, 0.0090, 0.0040, 18), trim);
+    bcap.rotation.z = Math.PI/2; bcap.position.set(bx + 0.0095, -0.002, 0.004); g.add(bcap);
+
+    /* 快拆镜桥：立柱 + 导轨夹 + 横栓螺母 + 扳手 */
+    const riser = new T.Mesh(new T.BoxGeometry(0.030, 0.012, 0.042), shell);
+    riser.position.set(0, -H/2 - 0.0055, 0.002); g.add(riser);
+    const clampB = new T.Mesh(new T.BoxGeometry(0.034, 0.010, 0.050), trim);
+    clampB.position.set(0, -H/2 - 0.0155, 0.002); g.add(clampB);
+    const bolt = new T.Mesh(new T.CylinderGeometry(0.0035, 0.0035, 0.040, 14), dark);
+    bolt.rotation.z = Math.PI/2; bolt.position.set(0, -H/2 - 0.0155, 0.012); g.add(bolt);
+    const nut = new T.Mesh(new T.CylinderGeometry(0.0050, 0.0050, 0.005, 6), trim);
+    nut.rotation.z = Math.PI/2; nut.position.set(0.019, -H/2 - 0.0155, 0.012); g.add(nut);
+    const lever = new T.Mesh(new T.BoxGeometry(0.0060, 0.016, 0.024), trim);
+    lever.position.set(-0.020, -H/2 - 0.0165, 0.000); lever.rotation.x = -0.22; g.add(lever);
   } else if (partId === 'scope2' || partId === 'scope4' || partId === 'thermal'){
     const thermal = partId === 'thermal';
     const L = thermal ? 0.17 : (partId === 'scope4' ? 0.21 : 0.18);
@@ -9444,6 +9644,9 @@ window.setGunOpticGlass = function(vm, alpha){
   if (!vm || !vm.opticGlass || !vm.opticGlass.length) return;
   const a = Math.max(0, Math.min(1, alpha));
   for (const m of vm.opticGlass){
+    /* 红点 / 全息的分划镜片是着色器材质：透明度和镀膜都在 shader 里，
+       uSee 越大玻璃越干净，目标直接从镜片穿进来。 */
+    if (m.uniforms && m.uniforms.uSee){ m.uniforms.uSee.value = a; continue; }
     if (m.userData.baseOp === undefined) m.userData.baseOp = (m.opacity !== undefined ? m.opacity : 0.10);
     /* alpha=0（腰射）：保留原始镀膜感；alpha=1（贴眼）：压到 4.5% 几乎全透 */
     const base = m.userData.baseOp;
