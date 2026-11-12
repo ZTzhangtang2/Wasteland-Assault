@@ -8838,6 +8838,331 @@ window.__mergeCfgMounts = mergeCfgMounts;
 })();
 
 /* =========================================================================
+   8.5 特种装备视图模型 —— BS-3A 防弹盾 / M2A1-7 喷火器
+   造型参考用户提供的两份 3D 展示页，用 three.js r128 的基础几何体重建为
+   第一人称视角模型。返回的对象遵循主脚本 wrapVM 的 vm 契约：
+   group / muzzle / eject / hands / basePos / baseRot / adsPos / adsRot / adsRef
+   刻意不提供 varAnchor —— syncGunParts / setGunParts 会直接跳过，因此这两件
+   装备不会被装上普通枪械配件（专属配件只改数值，不挂 3D 件）。
+   ========================================================================= */
+(function(){
+'use strict';
+const T = THREE;
+
+function cv(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return [c,c.getContext('2d')]; }
+function tex(c){
+  const t=new T.CanvasTexture(c);
+  t.encoding = T.sRGBEncoding; t.anisotropy=4;
+  return t;
+}
+/* texelize() 会按几何尺寸缩放 UV，把贴花拉成重复花纹。这里提前打标记跳过。 */
+function keep(g){ g.userData.uvScaled=true; return g; }
+function M(o){ return new T.MeshStandardMaterial(o); }
+function mesh(parent,g,m,x,y,z,rx,ry,rz){
+  const o=new T.Mesh(g,m);
+  o.position.set(x||0,y||0,z||0);
+  o.rotation.set(rx||0,ry||0,rz||0);
+  parent.add(o); return o;
+}
+function box(p,w,h,d,m,x,y,z,rx,ry,rz){ return mesh(p,new T.BoxGeometry(w,h,d),m,x,y,z,rx,ry,rz); }
+function cyl(p,rt,rb,h,m,x,y,z,rx,ry,rz,seg){ return mesh(p,new T.CylinderGeometry(rt,rb,h,seg||16),m,x,y,z,rx,ry,rz); }
+function ball(p,r,m,x,y,z){ return mesh(p,new T.SphereGeometry(r,12,10),m,x,y,z); }
+function plane(p,w,h,m,x,y,z,ry){ return mesh(p,keep(new T.PlaneGeometry(w,h)),m,x,y,z,0,ry||0,0); }
+
+/* ---------------------------------------------------------------- 贴图 */
+function shieldFace(){
+  const [c,x]=cv(512,740);
+  x.fillStyle='#1c2023'; x.fillRect(0,0,512,740);
+  /* 涂层颗粒 */
+  for(let i=0;i<2600;i++){
+    x.fillStyle='rgba(255,255,255,'+(Math.random()*0.035)+')';
+    x.fillRect(Math.random()*512,Math.random()*740,1+Math.random()*2,1+Math.random()*2);
+  }
+  /* 横向压纹 */
+  for(let y=0;y<740;y+=5){ x.fillStyle='rgba(255,255,255,.016)'; x.fillRect(0,y,512,1); }
+  /* 顶部观察窗（深色玻璃 + 内侧高光） */
+  x.fillStyle='#0b1013'; x.fillRect(128,112,256,92);
+  const g=x.createLinearGradient(128,112,384,204);
+  g.addColorStop(0,'rgba(150,205,215,.20)'); g.addColorStop(.5,'rgba(120,170,185,.05)');
+  g.addColorStop(1,'rgba(150,205,215,.16)'); x.fillStyle=g; x.fillRect(130,114,252,88);
+  x.strokeStyle='rgba(190,205,210,.45)'; x.lineWidth=3; x.strokeRect(128,112,256,92);
+  /* 主丝印 */
+  x.textAlign='center';
+  x.fillStyle='#e9edef'; x.font='bold 96px Arial'; x.fillText('POLICE',256,318);
+  x.fillStyle='rgba(210,216,218,.55)'; x.fillRect(112,336,288,3);
+  x.fillStyle='#c2cace'; x.font='bold 30px Arial'; x.fillText('BALLISTIC SHIELD',256,378);
+  x.fillStyle='#7e898e'; x.font='19px Arial';
+  x.fillText('NIJ 0108.01  ·  LEVEL III-A  ·  MULTI-HIT',256,408);
+  /* III-A 徽章 */
+  x.strokeStyle='rgba(214,221,223,.45)'; x.lineWidth=3;
+  x.beginPath(); x.moveTo(150,446); x.lineTo(362,446); x.lineTo(362,556);
+  x.quadraticCurveTo(362,626,256,654); x.quadraticCurveTo(150,626,150,556); x.closePath(); x.stroke();
+  x.fillStyle='rgba(226,232,234,.75)'; x.font='bold 46px Arial'; x.fillText('III-A',256,512);
+  x.font='17px Arial'; x.fillText('BALLISTIC COMPOSITE',256,544);
+  /* 底部警示 */
+  x.fillStyle='#c8a049'; x.beginPath(); x.moveTo(64,684); x.lineTo(92,640); x.lineTo(120,684); x.closePath(); x.fill();
+  x.fillStyle='#1a1c1e'; x.font='bold 22px Arial'; x.fillText('!',92,679);
+  x.textAlign='left'; x.fillStyle='#b9a06a'; x.font='bold 19px Arial';
+  x.fillText('WARNING: HANDGUN RATED ONLY',132,676);
+  x.fillStyle='#79848a'; x.font='16px monospace';
+  x.fillText('SN 24-BS-0913  ·  UHMWPE / ARAMID  ·  7.4 kg',64,716);
+  /* 磨损划痕 */
+  for(let i=0;i<60;i++){
+    x.strokeStyle='rgba(190,198,200,'+(.02+Math.random()*.09)+')'; x.lineWidth=.5+Math.random();
+    const px=Math.random()*512, py=Math.random()*740;
+    x.beginPath(); x.moveTo(px,py); x.lineTo(px+Math.random()*90-45,py+Math.random()*10-5); x.stroke();
+  }
+  return tex(c);
+}
+function tankLabel(){
+  const [c,x]=cv(256,512);
+  x.fillStyle='#c9bd94'; x.fillRect(0,0,256,512);
+  x.strokeStyle='#2b2b22'; x.lineWidth=6; x.strokeRect(12,12,232,488);
+  x.fillStyle='#24241c'; x.textAlign='center';
+  x.font='bold 26px sans-serif'; x.fillText('U.S. ARMY',128,58);
+  x.font='bold 34px sans-serif'; x.fillText('FLAME',128,112); x.fillText('THROWER',128,152);
+  x.font='bold 30px sans-serif'; x.fillText('M2A1-7',128,204);
+  x.font='17px sans-serif'; x.fillText('THICKENED GASOLINE',128,242);
+  x.fillText('FUEL  ·  18 L',128,268);
+  x.fillStyle='#a8331f'; x.fillRect(24,296,208,70);
+  x.fillStyle='#f2e6c4'; x.font='bold 26px sans-serif'; x.fillText('DANGER',128,330);
+  x.font='bold 17px sans-serif'; x.fillText('FLAMMABLE',128,356);
+  x.fillStyle='#33332a'; x.font='15px monospace';
+  x.fillText('LOT 4471  ·  1958',128,408); x.fillText('NO SMOKING',128,432);
+  for(let i=0;i<300;i++){ x.fillStyle='rgba(0,0,0,'+(Math.random()*.07)+')';
+    x.fillRect(Math.random()*256,Math.random()*512,1+Math.random()*3,1+Math.random()*3); }
+  return tex(c);
+}
+function gaugeTex(){
+  const [c,x]=cv(128,128);
+  x.fillStyle='#e7e0c8'; x.beginPath(); x.arc(64,64,62,0,7); x.fill();
+  x.strokeStyle='#2a2a24'; x.lineWidth=4; x.stroke();
+  for(let i=0;i<=20;i++){
+    const a=Math.PI*.75+i/20*Math.PI*1.5;
+    x.strokeStyle=i>16?'#b0341f':'#222'; x.lineWidth=i%5?1.5:3;
+    x.beginPath(); x.moveTo(64+Math.cos(a)*48,64+Math.sin(a)*48);
+    x.lineTo(64+Math.cos(a)*58,64+Math.sin(a)*58); x.stroke();
+  }
+  x.strokeStyle='#1a1a1a'; x.lineWidth=3;
+  x.beginPath(); x.moveTo(64,64); x.lineTo(64+Math.cos(3.6)*46,64+Math.sin(3.6)*46); x.stroke();
+  return tex(c);
+}
+
+/* ------------------------------------------------------- 圆角矩形轮廓 */
+function roundRectShape(w,h,r,cx,cy){
+  const s=new T.Shape(), x=cx-w/2, y=cy-h/2, X=x+w, Y=y+h;
+  s.moveTo(x+r,y); s.lineTo(X-r,y); s.quadraticCurveTo(X,y,X,y+r);
+  s.lineTo(X,Y-r); s.quadraticCurveTo(X,Y,X-r,Y);
+  s.lineTo(x+r,Y); s.quadraticCurveTo(x,Y,x,Y-r);
+  s.lineTo(x,y+r); s.quadraticCurveTo(x,y,x+r,y);
+  return s;
+}
+
+/* ------------------------------------------------------------ vm 工厂 */
+function makeVM(group, muzzle, base, rot){
+  const eject=new T.Object3D(); group.add(eject);
+  group.add(muzzle);
+  return {
+    group:group, muzzle:muzzle, eject:eject, hands:new T.Group(),
+    basePos:new T.Vector3(base[0],base[1],base[2]),
+    baseRot:new T.Vector3(rot[0],rot[1],rot[2]),
+    adsPos:new T.Vector3(base[0],base[1],base[2]),
+    adsRot:new T.Vector3(0,0,0), adsRef:0.62,
+    ironYm:0, boost:1, opticAnchor:null, varAnchor:null,
+    optic:null, opticGlass:[], varGroups:{}, mountId:'rifle'
+  };
+}
+
+/* --------------------------------------------------------------- 盾牌 */
+function buildShieldVM(){
+  const G=new T.Group(), root=new T.Group();
+  root.scale.setScalar(0.78); G.add(root);
+
+  const coat=M({color:0x2a2f33, roughness:.82, metalness:.16});
+  const edge=M({color:0x141719, roughness:.96, metalness:.03});
+  const alu =M({color:0x8d959a, roughness:.34, metalness:.86});
+  const steel=M({color:0xb7bec2, roughness:.28, metalness:.92});
+  const rubber=M({color:0x1d2124, roughness:.96, metalness:.04});
+  const amber=M({color:0xffd27a, emissive:0xff9a2e, emissiveIntensity:1.5, roughness:.4});
+
+  /* 盾体：圆角矩形挤出，五层夹芯的侧面用深色分层条示意 */
+  const sh=roundRectShape(0.62,0.90,0.045,0,0);
+  const core=new T.ExtrudeGeometry(sh,{depth:0.028,bevelEnabled:true,
+    bevelThickness:0.003,bevelSize:0.003,bevelSegments:2,curveSegments:10});
+  core.translate(0,0,-0.014);
+  mesh(root,core,[coat,edge],0,0,0);
+
+  /* 正面丝印贴花（面向玩家，切换到盾即自动举起） */
+  const faceMat=M({map:shieldFace(), roughness:.78, metalness:.10});
+  plane(root,0.60,0.88,faceMat,0,0,0.0185);
+
+  /* 四周橡胶防撞护边 */
+  for(const sy of [-1,1]) box(root,0.62,0.026,0.040,edge,0,sy*0.443,0);
+  for(const sx of [-1,1]) box(root,0.026,0.90,0.040,edge,sx*0.307,0,0);
+
+  /* 观察窗：金属压框 + 半透明防弹玻璃 + 螺丝 */
+  const glass=M({color:0x7fa4ad,transparent:true,opacity:.42,roughness:.08,metalness:.35,
+    emissive:0x102229,emissiveIntensity:.35,depthWrite:false,side:T.DoubleSide});
+  plane(root,0.30,0.10,glass,0,0.255,0.021);
+  for(const sy of [-1,1]) box(root,0.34,0.012,0.014,alu,0,0.255+sy*0.056,0.023);
+  for(const sx of [-1,1]) box(root,0.012,0.12,0.014,alu,sx*0.156,0.255,0.023);
+  for(const sx of [-1,1]) for(const sy of [-1,1])
+    cyl(root,0.006,0.006,0.004,steel,sx*0.156,0.255+sy*0.056,0.026,Math.PI/2,0,0,10);
+
+  /* 视窗两侧 LED 眩目灯组 */
+  for(const sx of [-1,1]){
+    box(root,0.050,0.16,0.012,M({color:0x2c3135,roughness:.5,metalness:.6}),sx*0.238,0.255,0.022);
+    for(let i=-1;i<=1;i++){
+      cyl(root,0.014,0.014,0.006,steel,sx*0.238,0.255+i*0.049,0.030,Math.PI/2,0,0,14);
+      ball(root,0.011,amber,sx*0.238,0.255+i*0.049,0.034).scale.z=0.6;
+    }
+  }
+  /* 边缘铆钉 */
+  for(let i=-2;i<=2;i++) for(const sy of [-1,1]){
+    if(sy>0 && Math.abs(i*0.112)<0.11) continue;
+    cyl(root,0.006,0.006,0.004,steel,i*0.112,sy*0.425,0.020,Math.PI/2,0,0,10);
+  }
+  for(let i=-3;i<=3;i++) for(const sx of [-1,1])
+    cyl(root,0.006,0.006,0.004,steel,sx*0.292,i*0.112,0.020,Math.PI/2,0,0,10);
+
+  /* 背面：握把、前臂带、软垫、铭牌（第一人称能看到一点侧边） */
+  const back=M({color:0x23282b,roughness:.88,metalness:.10});
+  box(root,0.34,0.30,0.012,back,0,0.035,-0.022);
+  cyl(root,0.016,0.016,0.212,rubber,0,0.055,-0.062,0,0,Math.PI/2,16);
+  box(root,0.225,0.105,0.016,back,0,-0.165,-0.024);
+  const strap=new T.Mesh(new T.TorusGeometry(0.16,0.012,8,24,Math.PI),
+    M({color:0x22262a,roughness:.97,side:T.DoubleSide}));
+  strap.rotation.set(0,0,Math.PI); strap.position.set(0,-0.20,-0.048); root.add(strap);
+  const plate=plane(root,0.145,0.051,M({color:0xaab1b4,metalness:.7,roughness:.4}),
+    0,-0.365,-0.021,Math.PI);
+
+  /* 两条前臂 / 手套，让人物真的「举着」盾 */
+  const sleeve=M({color:0x4b5040,roughness:.95}), glove=M({color:0x30332e,roughness:.9});
+  box(root,0.075,0.075,0.30,sleeve,-0.16,-0.30,-0.10,0.24,0.10,0.10);
+  box(root,0.062,0.062,0.12,glove,-0.13,-0.24,-0.24,0.24,0.10,0.10);
+
+  const muzzle=new T.Object3D(); muzzle.position.set(0,0,0.16);
+  return makeVM(G,muzzle,[0.015,-0.30,-0.94],[0.03,-0.10,-0.02]);
+}
+
+/* ------------------------------------------------------------ 喷火器 */
+function flameMaterial(inner){
+  return new T.ShaderMaterial({
+    uniforms:{ uTime:{value:0}, uIntensity:{value:0}, uInner:{value:inner?1:0} },
+    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader:[
+      'uniform float uTime; uniform float uIntensity; uniform float uInner;',
+      'varying vec2 vUv;',
+      'void main(){',
+      '  float t = clamp(vUv.y, 0.0, 1.0);',
+      '  float fl = 0.76 + 0.24*sin(uTime*29.0 + vUv.x*19.0)*sin(uTime*16.0 + t*13.0);',
+      '  float a = t * smoothstep(0.0,0.28,t) * fl * uIntensity;',
+      '  vec3 hot = mix(vec3(1.0,0.97,0.74), vec3(1.0,0.52,0.10), t*0.55);',
+      '  vec3 col = mix(vec3(0.86,0.14,0.02), hot, uInner>0.5 ? 1.0 : (1.0-t)*0.85+0.15);',
+      '  gl_FragColor = vec4(col, a*(uInner>0.5?0.78:0.46));',
+      '}'
+    ].join('\n'),
+    transparent:true, blending:T.AdditiveBlending, depthWrite:false,
+    side:T.DoubleSide, fog:false
+  });
+}
+function flameCone(radius,height,material,z){
+  const c=new T.Mesh(new T.ConeGeometry(radius,height,18,6,true),material);
+  c.rotation.x=Math.PI/2;                 /* 锥尖朝 +Z（贴枪口），锥底朝 -Z（火焰远端） */
+  c.position.set(0,0.012,z-height/2);
+  c.visible=false; c.frustumCulled=false; c.renderOrder=8;
+  return c;
+}
+function buildFlamerVM(){
+  const G=new T.Group(), root=new T.Group(); G.add(root);
+  const od  =M({color:0x4d5540,roughness:.66,metalness:.42});
+  const steel=M({color:0x7c827b,roughness:.44,metalness:.82});
+  const brass=M({color:0xa8844c,roughness:.31,metalness:.92});
+  const brassD=M({color:0x6d5836,roughness:.45,metalness:.86});
+  const copper=M({color:0x9a5f3c,roughness:.36,metalness:.90});
+  const rubber=M({color:0x171918,roughness:.86,metalness:.06});
+  const bake =M({color:0x242724,roughness:.68,metalness:.16});
+  const ember=M({color:0xffb347,emissive:0xff6a12,emissiveIntensity:1.2,roughness:.5});
+
+  /* 喷枪 M7：沿 -Z 为枪口方向 */
+  cyl(root,0.014,0.014,0.70,od,0,0,-0.42,Math.PI/2,0,0,20);
+  cyl(root,0.017,0.014,0.07,steel,0,0,-0.74,Math.PI/2,0,0,20);
+  for(const z of [-0.26,-0.02]) cyl(root,0.016,0.016,0.014,brassD,0,0,z,Math.PI/2,0,0,16);
+  /* 后阀体、保险、点火线 */
+  cyl(root,0.031,0.031,0.155,od,0,0,-0.06,Math.PI/2,0,0,24);
+  cyl(root,0.020,0.020,0.030,brass,0,0,0.028,Math.PI/2,0,0,8);
+  box(root,0.055,0.032,0.075,bake,0,0.040,0.02);
+  box(root,0.008,0.008,0.10,steel,0.036,-0.012,0.02,0,0,-0.2);
+  /* 前部隔热护套 */
+  cyl(root,0.026,0.026,0.15,bake,0,0,-0.52,Math.PI/2,0,0,24);
+  for(const z of [-0.455,-0.595]) cyl(root,0.027,0.027,0.006,steel,0,0,z,Math.PI/2,0,0,20);
+  /* 喷嘴 + 点火器护罩 + 五发点火弹筒 */
+  cyl(root,0.026,0.022,0.05,brassD,0,0,-0.79,Math.PI/2,0,0,20);
+  cyl(root,0.009,0.018,0.055,brass,0,0,-0.84,Math.PI/2,0,0,24);
+  for(let i=0;i<3;i++)
+    cyl(root,0.050,0.050,0.12,steel,0,0,-0.80,Math.PI/2,0,0,14);
+  for(let i=0;i<5;i++){
+    const a=i/5*Math.PI*2+Math.PI/2, x=Math.cos(a)*0.030, y=Math.sin(a)*0.030;
+    cyl(root,0.0065,0.0065,0.10,copper,x,y,-0.80,Math.PI/2,0,0,10);
+    ball(root,0.005,ember,x,y,-0.85);
+  }
+  /* 握把 + 扳机护圈 */
+  const grip=cyl(root,0.024,0.018,0.15,bake,0,-0.10,0.02,0.22,0,0,18);
+  box(root,0.030,0.008,0.02,steel,0,-0.175,0.03);
+  const guard=new T.Mesh(new T.TorusGeometry(0.028,0.004,6,18,Math.PI*1.25),steel);
+  guard.rotation.set(0,0,Math.PI*0.88); guard.position.set(0,-0.115,0.075); root.add(guard);
+  box(root,0.012,0.045,0.010,brassD,0,-0.115,0.10,0.30,0,0);
+  /* 燃料罐组背在角色身后：第一人称手持视角里不渲染。
+     viewmodel 挂在相机下，+Z 即相机后方；单独成组，第三人称 / 观战可复用。 */
+  const tanks=new T.Group(); tanks.name='backFuelTanks';
+  tanks.position.set(-0.26,-0.16,0.95); tanks.rotation.y=-0.28;
+  tanks.visible=false;
+  G.add(tanks);                                  /* 挂外层组，不随手持摆动 */
+  const labelMat=M({map:tankLabel(),roughness:.9,side:T.DoubleSide});
+  for(const x of [-0.10,0.10]){
+    cyl(tanks,0.085,0.085,0.56,od,x,0.28,0,0,0,0,24);
+    cyl(tanks,0.086,0.086,0.30,labelMat,x,0.33,0,0,0,0,28);
+    for(const y of [0.10,0.46]) cyl(tanks,0.087,0.087,0.008,steel,x,y,0,0,0,0,24);
+    cyl(tanks,0.026,0.030,0.04,brass,x,0.60,0,0,0,0,8);
+  }
+  cyl(tanks,0.070,0.070,0.50,od,0,0.25,-0.10,0,0,0,20);
+  for(const x of [-0.235,0.235]) cyl(tanks,0.009,0.009,0.70,steel,x,0.35,-0.13,0,0,0,10);
+  const backGauge=new T.Mesh(keep(new T.CircleGeometry(0.038,24)),M({map:gaugeTex(),roughness:.5}));
+  backGauge.position.set(0,0.59,0.005); tanks.add(backGauge);
+
+  /* 手持部分：枪尾供油接口 + 阀体小压力表 + 从画面左下（背包方向）伸来的软管 */
+  cyl(root,0.026,0.026,0.045,brass,0,-0.055,0.075,Math.PI/2,0,0,12);
+  const gauge=new T.Mesh(keep(new T.CircleGeometry(0.020,20)),M({map:gaugeTex(),roughness:.5}));
+  gauge.position.set(0.033,0.052,-0.055); gauge.rotation.y=-0.45; root.add(gauge);
+  const hose=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([
+    new T.Vector3(-0.62,-0.48,0.16), new T.Vector3(-0.42,-0.40,0.00),
+    new T.Vector3(-0.24,-0.30,-0.12), new T.Vector3(-0.10,-0.16,0.00),
+    new T.Vector3(0,-0.055,0.075)
+  ]),40,0.013,8,false),rubber);
+  root.add(hose);
+  /* 双手 */
+  const sleeve=M({color:0x4b5040,roughness:.95}), glove=M({color:0x30332e,roughness:.9});
+  box(root,0.075,0.075,0.26,sleeve,0.02,-0.20,0.14,0.30,0,0.10);
+  box(root,0.062,0.062,0.11,glove,0,-0.13,0.02,0.25,0,0);
+  box(root,0.075,0.075,0.22,sleeve,-0.10,-0.17,-0.44,-0.20,0,0.20);
+  box(root,0.060,0.060,0.10,glove,-0.03,-0.09,-0.52,-0.20,0,0);
+
+  /* 火焰锥：两层加色混合，尖端贴枪口，底部向远处张开 */
+  const muzzle=new T.Object3D(); muzzle.position.set(0,0.012,-0.87);
+  const outer=flameCone(0.20,0.95,flameMaterial(false),-0.87);
+  const core =flameCone(0.105,0.58,flameMaterial(true),-0.87);
+  root.add(outer); root.add(core);
+
+  const vm=makeVM(G,muzzle,[0.20,-0.26,-0.80],[-0.03,0.06,0.02]);
+  vm.flameCone=outer; vm.flameCore=core;
+  vm.backPack=tanks;                  /* 背在身后的燃料罐组（第一人称不渲染） */
+  return vm;
+}
+
+window.SPECIAL_BUILDERS = { shield:buildShieldVM, flamer:buildFlamerVM };
+})();
+
+/* =========================================================================
    9. WEAPON DEFINITIONS
    ========================================================================= */
 const WEAPONS = window.WEAPONS = [
@@ -8951,7 +9276,28 @@ const WEAPONS = window.WEAPONS = [
     reloadTime:3.40, drawTime:0.95, shakeAmt:0.90, range:260,
     falloffStart:260, falloffRange:1, falloffMin:1.0,
     adsFov:12, adsSpread:0.010, adsTime:0.24, scope:true, noise:66,
-    shellBig:true, build:window.NEW_GUN_BUILDERS.awm }
+    shellBig:true, build:window.NEW_GUN_BUILDERS.awm },
+  /* ---- 特种装备：BS-3A 防弹盾 / M2A1-7 喷火器 ---- */
+  { id:'shield', name:'BS-3A 防弹盾', sound:'pistol', kind:'shield',
+    magSize:1, reserve:0, maxReserve:0, damage:75, headMult:1,
+    rpm:70, auto:false, semiToggle:false, pellets:1,
+    spreadBase:0, spreadMax:0, spreadShot:0, spreadRecover:0.10,
+    moveSpread:0, airSpread:0, crouchMult:1,
+    recoilKick:0.02, recoilRot:0.03, camPitch:0.010, camYaw:0.002, fovKick:0.3,
+    reloadTime:1.0, drawTime:0.45, shakeAmt:0.10, range:2.8,
+    falloffStart:2.8, falloffRange:1, falloffMin:1,
+    adsFov:75, adsSpread:1, adsTime:0.20, noise:8,
+    shellBig:false, build:window.SPECIAL_BUILDERS.shield },
+  { id:'flamer', name:'M2A1-7 喷火器', sound:'shotgun', kind:'flamer',
+    magSize:100, reserve:200, maxReserve:200, damage:60, headMult:1,
+    rpm:600, auto:true, semiToggle:false, pellets:1,
+    spreadBase:0.02, spreadMax:0.05, spreadShot:0, spreadRecover:0.10,
+    moveSpread:0, airSpread:0, crouchMult:1,
+    recoilKick:0.004, recoilRot:0.006, camPitch:0.001, camYaw:0.001, fovKick:0.05,
+    reloadTime:3.4, drawTime:0.80, shakeAmt:0.05, range:9,
+    falloffStart:9, falloffRange:1, falloffMin:1,
+    adsFov:75, adsSpread:1, adsTime:0.20, noise:24,
+    shellBig:false, build:window.SPECIAL_BUILDERS.flamer }
 ];
 
 /* build all viewmodels once, keep them parented under the animation rig */
@@ -9022,7 +9368,9 @@ const WICONS = [
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><rect x="26" y="5" width="32" height="7" rx="1" fill="#c3cbd2" opacity=".9"/><path d="M30 12h22l-3 7h-9l-3-7z" fill="#8b939a" opacity=".9"/><path d="M28 6v6M32 6v6M36 6v6" stroke="#4a5158" stroke-width="1"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 8h28l3-3h10v3h27v4H43l-2 3H31l-2-3h-7l-3 7h-5l2-7H2z" fill="#dfe6ec" opacity=".85"/><path d="M20 12h9l-2 8h-6z" fill="#a9763f" opacity=".9"/><rect x="44" y="11" width="12" height="8" rx="1" fill="#a9763f" opacity=".9"/></svg>`,
   `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h20l4-4h10v4h34v4H36v3h-9l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="34" y="11" width="15" height="8" rx="7" fill="#6f777e" opacity=".9"/><rect x="40" y="6" width="28" height="3" rx="1" fill="#aab2b8" opacity=".85"/></svg>`,
-  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="20" y="2" width="26" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="24" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="38" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><path d="M40 19l4-6M48 19l-4-6" stroke="#8b939a" stroke-width="1.4"/></svg>`
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M2 9h34l4-3h10v3h20v3H48l-2 3h-8l-3 6h-5l2-6H2z" fill="#dfe6ec" opacity=".85"/><rect x="20" y="2" width="26" height="4" rx="2" fill="#dfe6ec" opacity=".85"/><rect x="24" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><rect x="38" y="6" width="3" height="3" fill="#dfe6ec" opacity=".6"/><path d="M40 19l4-6M48 19l-4-6" stroke="#8b939a" stroke-width="1.4"/></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><path d="M24 2h24a6 6 0 0 1 6 6v7a8 8 0 0 1-14 4c-3-2-5-2-8 0a8 8 0 0 1-14-4V8a6 6 0 0 1 6-6z" fill="#2b3135" stroke="#8fa3ac" stroke-width="1.1"/><rect x="30" y="4.5" width="12" height="3.5" rx=".6" fill="#7fa4ad" opacity=".7"/><text x="36" y="14" font-size="6" font-weight="bold" fill="#e9edef" text-anchor="middle" font-family="Arial">III-A</text></svg>`,
+  `<svg width="72" height="20" viewBox="0 0 72 20" fill="none"><rect x="4" y="5" width="12" height="12" rx="2" fill="#4d5540" stroke="#262c31" stroke-width=".8"/><rect x="18" y="5" width="12" height="12" rx="2" fill="#4d5540" stroke="#262c31" stroke-width=".8"/><path d="M30 10h26l6-2v5l-6-2H30z" fill="#8b939a"/><rect x="62" y="8" width="8" height="5" rx="1" fill="#b46b3a"/><path d="M70 10c4-2 5 0 2 2-3 2-4 0-2-2z" fill="#ff9a3c" opacity=".9"/><path d="M8 17v2M24 17v2" stroke="#262c31" stroke-width="1"/></svg>`
 ];
 
 /* =========================================================================
@@ -10370,7 +10718,8 @@ function saveSet(){ try { localStorage.setItem(SET_STORE, JSON.stringify(SET)); 
 const WIDX = {};                                   // 武器 id → WEAPONS 下标
 WEAPONS.forEach((w,i)=>{ WIDX[w.id] = i; });
 const WSHORT = { rifle:'M4', shotgun:'KS-12', pistol:'P226', sniper:'SR25',
-                 scar_l:'SCAR-L', glock17:'G17', ak47:'AK-47', aa12:'AA-12', awm:'AWM' };
+                 scar_l:'SCAR-L', glock17:'G17', ak47:'AK-47', aa12:'AA-12', awm:'AWM',
+                 shield:'盾', flamer:'喷火' };
 /* 死斗的军械库顺序 = 数字键 1-4；四把枪开局即解锁 */
 /* 死斗军械库：原四把 + 新增五把，数字键 1-9 与点弹药栏轮换都可取用 */
 const PVP_GUNS = ['rifle','shotgun','pistol','sniper',
@@ -10412,6 +10761,7 @@ function equipGun(id){
 }
 /** 快捷槽切换：0/1 枪械，2 投掷物 */
 function switchWeaponSlot(i){
+  if (i === 2 && window.EQUIP && EQUIP.shieldRaised()){ SFX.deny(); return; }  /* 举盾时不能投掷 */
   if (i === 2){
     if (nadeCount(player.nadeKind) <= 0){ SFX.deny(); return; }
     if (player.nadeMode) return;
@@ -10762,6 +11112,7 @@ function blastLOS(from, to){
 /* ---------------- 滑铲 ---------------- */
 const SLIDE_SPEED = 9.6, SLIDE_TIME = 0.72, SLIDE_CD = 1.05;
 function trySlide(){
+  if (window.EQUIP && EQUIP.blocksJump()) return;      /* 举盾时不能滑铲 */
   if (player.slideT > 0 || player.slideCd > 0) return;
   if (!player.onGround || player.crouch || player.reloadT > 0) return;
   if (player.nadeMode && player.cooking) return;
@@ -10934,10 +11285,27 @@ function updateAmmoUI(){
                           : w.id==='sniper'  ? '栓动' : '半自动')
                           + (pvpInfAmmo() ? ' · 无限弹药' : '');
     if (UI._icon !== player.weapon){ UI._icon = player.weapon; UI.wicon.innerHTML = WICONS[player.weapon]; }
-    const need = w.mag===0 || (w.mag <= w.magSize*0.25 && w.res>0);
-    UI.reloadHint.textContent = (w.mag===0 && w.res===0) ? '弹药耗尽'
-                              : (need && player.reloadT<=0 ? (IS_TOUCH?'点击换弹':'按 R 换弹') : '');
-    UI.reloadHint.classList.toggle('blink', w.mag===0 && w.res>0);
+    if (w.kind === 'shield'){
+      UI.magNum.textContent = '—';
+      UI.resNum.textContent = '/ 举盾';
+      UI.magNum.classList.remove('empty');
+      UI.wmode.textContent = (window.EQUIP && EQUIP.shieldStatusText()) || '正面免伤';
+      UI.reloadHint.textContent = '左键盾击 · 盾击后短暂失去防护';
+      UI.reloadHint.classList.remove('blink');
+    } else if (w.kind === 'flamer'){
+      UI.magNum.textContent = Math.ceil(w.mag);
+      UI.resNum.textContent = '/ ' + (pvpInfAmmo() ? '∞' : Math.ceil(w.res));
+      UI.magNum.classList.toggle('empty', w.mag<=0);
+      UI.wmode.textContent = '长按喷射 · 燃料';
+      UI.reloadHint.textContent = w.mag<=0 ? (w.res>0?'燃料耗尽 · 按 R 换罐':'燃料耗尽')
+                                           : '长按开火 · 灼烧 3s · 按 R 换罐';
+      UI.reloadHint.classList.toggle('blink', w.mag<=0 && w.res>0);
+    } else {
+      const need = w.mag===0 || (w.mag <= w.magSize*0.25 && w.res>0);
+      UI.reloadHint.textContent = (w.mag===0 && w.res===0) ? '弹药耗尽'
+                                : (need && player.reloadT<=0 ? (IS_TOUCH?'点击换弹':'按 R 换弹') : '');
+      UI.reloadHint.classList.toggle('blink', w.mag===0 && w.res>0);
+    }
   }
   /* 快捷槽高亮 + 文案 */
   UI.slots.forEach((s,i)=>{
@@ -12506,6 +12874,7 @@ function currentSpreadMult(){
 function setADS(on){
   if (on === player.ads) return;
   if (on && (player.dead || !G.running)) return;
+  if (on && WEAPONS[player.weapon] && WEAPONS[player.weapon].kind) return;   /* 特种装备禁止开镜 */
   player.ads = on;
   if (!on){ player.breathHeld = false; player.breathLock = false; }
 }
@@ -12538,11 +12907,13 @@ function switchWeapon(i){
   player.boltT = 0;
   player.switchTo = i;
   player.switching = WEAPONS[i].drawTime + 0.22;
+  if (window.EQUIP) EQUIP.onSwitchStart(WEAPONS[i].id);
   player.holsterAt = 0.22;
   SFX.boltClick();
 }
 function startReload(){
   const w = WEAPONS[player.weapon];
+  if (w.kind === 'shield') return;                 /* 盾没有弹匣，也不能换弹 */
   if (player.reloadT>0 || player.switching>0 || player.pumpT>0 || player.boltT>0) return;
   if (w.mag>=w.magSize || (!pvpInfAmmo() && w.res<=0)) return;
   if (pvpInfAmmo()) w.res = w.reserve;
@@ -12567,6 +12938,7 @@ function finishReload(){
 function fireWeapon(){
   if (player.nadeMode) return false;        // 投掷状态不走开火逻辑
   const w = WEAPONS[player.weapon];
+  if (w.kind === 'shield' || w.kind === 'flamer') return false;   /* 特种装备走专用分支 */
   if (player.fireCooldown>0 || player.reloadT>0 || player.switching>0 || player.pumpT>0 || player.boltT>0) return false;
   if (w.mag<=0){
     if (player.triggerReleased){ SFX.dryFire(); player.triggerReleased=false; }
@@ -12851,6 +13223,7 @@ function vmKick(w){
    ========================================================================= */
 function damagePlayer(amount, fromPos){
   if (player.dead || G.over) return;
+  if (window.EQUIP && EQUIP.blockDamage(amount, fromPos)) return;   /* 盾：正面免伤 */
   /* 护甲等级每级减伤 9%，和护甲值本身是两套东西；头灯 / 肾上腺素的减伤走 gearDmgRed */
   let dmg = amount * (1 - (player.armorLv|0) * 0.09)
                   * (1 - clamp(player.gearDmgRed||0, 0, 0.6));
@@ -14243,6 +14616,7 @@ function startMantle(target){
 }
 
 function updatePlayer(dt){
+  if (window.EQUIP) EQUIP.update(dt);          /* 特种装备：状态 / 灼烧 / HUD */
   if (NET.spectate || player.dead){
     mouseDX = mouseDY = 0;
     if (NET.pvp && player.dead && !NET.spectate){
@@ -14319,7 +14693,8 @@ function updatePlayer(dt){
   const wantCrouch = !!(keys['ControlLeft']||keys['ControlRight']||keys['KeyC']||TOUCH.crouch);
   const speedNow = Math.hypot(player.vel.x, player.vel.z);
   const wantSprint = shiftDown && !wantCrouch && !player.ads &&
-                     (keys['KeyW']||TOUCH.my>0.25) && player.reloadT<=0;
+                     (keys['KeyW']||TOUCH.my>0.25) && player.reloadT<=0 &&
+                     !(window.EQUIP && EQUIP.isSpecialHeld());
   if (player.slideT > 0){
     player.crouch = true;                    // 滑铲期间锁低姿态
   } else if (!wantCrouch && player.crouch){
@@ -14352,6 +14727,7 @@ function updatePlayer(dt){
   /* 增益 / 配件带来的移速倍率（肾上腺素、鼓形弹匣这类）。以前这个值只写不读，
      等于所有「移速 ±X%」的文案都没生效。 */
   maxSpeed *= (player.gearSpeedMul || 1);
+  if (window.EQUIP) maxSpeed *= EQUIP.speedMul(wpn);   /* 举盾 / 喷射时减速 */
   if (player.reloadT>0) maxSpeed *= 0.86;
   maxSpeed *= 1 - 0.40*player.adsEase;
   /* 滑铲是一段自带速度的冲刺，不被普通步速钳住 */
@@ -14389,7 +14765,8 @@ function updatePlayer(dt){
   /* `spacePressed` is the latched tap: a thumb that is down and up again
      inside one frame (easy on a 12ms frame, certain on a slow one) would
      otherwise never register as a jump */
-  if ((jumpHeld || spacePressed) && player.onGround && !player.crouch){
+  if ((jumpHeld || spacePressed) && player.onGround && !player.crouch &&
+      !(window.EQUIP && EQUIP.blocksJump())){
     player.vel.y = JUMP_V;
     player.onGround = false;
     player.jumpsLeft = 1;
@@ -14566,11 +14943,20 @@ function updatePlayer(dt){
       if (player.triggerReleased){ SFX.deny(); player.triggerReleased = false; }
     }
   } else if (!player.dead && (player.triggerHeld || player.clickBuf > 0)){
-    /* 开火立即开镜：第一下扣扳机就把枪抬起来 */
-    if (SET.fireAds && !player.ads && wpn.adsFov && player.switching<=0 &&
-        player.reloadT<=0 && player.pumpT<=0 && player.boltT<=0) setADS(true);
-    if (w.auto && !w.semi){ if (fireWeapon()) player.clickBuf = 0; }
-    else if (player.triggerReleased){ if (fireWeapon()) player.clickBuf = 0; }
+    /* 特种装备：盾 = 单击盾击；喷火器 = 长按持续喷射。都不走普通弹道开火。 */
+    if (w.kind === 'shield'){
+      if (player.triggerReleased || player.clickBuf > 0){
+        if (window.EQUIP && EQUIP.shieldBash()){ player.clickBuf = 0; player.triggerReleased = false; }
+      }
+    } else if (w.kind === 'flamer'){
+      if (window.EQUIP) EQUIP.flameTick(dt, w);
+    } else {
+      /* 开火立即开镜：第一下扣扳机就把枪抬起来 */
+      if (SET.fireAds && !player.ads && wpn.adsFov && player.switching<=0 &&
+          player.reloadT<=0 && player.pumpT<=0 && player.boltT<=0) setADS(true);
+      if (w.auto && !w.semi){ if (fireWeapon()) player.clickBuf = 0; }
+      else if (player.triggerReleased){ if (fireWeapon()) player.clickBuf = 0; }
+    }
   }
 
   /* ---- reload ---- */
@@ -14626,6 +15012,7 @@ function updatePlayer(dt){
       player.switchTo = -1;
       WEAPONS[player.weapon].vm.group.visible=true;
       updateAmmoUI();
+      if (window.EQUIP) EQUIP.onEquip(WEAPONS[player.weapon].id);
     }
     if (player.switching<=0){ player.switching=0; }
   }
@@ -14645,13 +15032,22 @@ function updateViewmodel(dt, mdx, mdy){
   swayLagX = damp(swayLagX, swayX, 9, dt);
   swayLagY = damp(swayLagY, swayY, 9, dt);
 
-  /* recoil spring */
+  /* recoil spring
+     这个显式欧拉积分在 K=210 / D=19 下只有 dt 小于约 0.056s 才收敛。而主循环
+     的追帧（frame() 里的 CATCHUP）会把单帧 dt 抬到 0.11s，此时每一步放大
+     3 倍，残余后坐力被放大几百倍，枪被甩出视锥 —— 表现就是枪突然缩小、
+     乱转、消失，等 dt 恢复后又慢慢衰减回来。这里改成固定子步积分，
+     积分步长与帧时间解耦。 */
   const K=210, D=19;
-  vmRec.vz += (-vmRec.pz*K)*dt; vmRec.vz -= vmRec.vz*D*dt; vmRec.pz += vmRec.vz*dt;
-  vmRec.vy += (-vmRec.py*K)*dt; vmRec.vy -= vmRec.vy*D*dt; vmRec.py += vmRec.vy*dt;
-  vmRec.vrx += (-vmRec.rx*K)*dt; vmRec.vrx -= vmRec.vrx*D*dt; vmRec.rx += vmRec.vrx*dt;
-  vmRec.vry += (-vmRec.ry*K)*dt; vmRec.vry -= vmRec.vry*D*dt; vmRec.ry += vmRec.vry*dt;
-  vmRec.vrz += (-vmRec.rz*K)*dt; vmRec.vrz -= vmRec.vrz*D*dt; vmRec.rz += vmRec.vrz*dt;
+  const steps = Math.max(1, Math.ceil(dt/0.008));
+  const h = dt/steps;
+  for (let i=0;i<steps;i++){
+    vmRec.vz += (-vmRec.pz*K)*h; vmRec.vz -= vmRec.vz*D*h; vmRec.pz += vmRec.vz*h;
+    vmRec.vy += (-vmRec.py*K)*h; vmRec.vy -= vmRec.vy*D*h; vmRec.py += vmRec.vy*h;
+    vmRec.vrx += (-vmRec.rx*K)*h; vmRec.vrx -= vmRec.vrx*D*h; vmRec.rx += vmRec.vrx*h;
+    vmRec.vry += (-vmRec.ry*K)*h; vmRec.vry -= vmRec.vry*D*h; vmRec.ry += vmRec.vry*h;
+    vmRec.vrz += (-vmRec.rz*K)*h; vmRec.vrz -= vmRec.vrz*D*h; vmRec.rz += vmRec.vrz*h;
+  }
 
   /* ---- 手里攥着雷：不走枪械动画，自己抖 ---- */
   if (player.nadeMode){
@@ -14919,6 +15315,7 @@ function resetWorldState(){
   if (nadeVM) nadeVM.group.visible = false;
   for (const w of WEAPONS){ w.mag=w.magSize; w.res=w.reserve; w.spread=w.spreadBase; w.semi=false;
                             w.vm.group.visible=false; }
+  try{ window.EQUIP && EQUIP.reset(); }catch(_re){}
   /* 队友错开出生，否则两个人的模型会重叠在同一个点上。
      多人按座位排一圈：nearestFree 在同一颗种子上结果确定，两边算出的
      落点一致，不会出现“房里五个人叠成一个” */
@@ -17603,6 +18000,18 @@ const SHOP_ITEMS = [
   { id:'gun_awm', name:'AWM 狙击步枪', price:2100, desc:'.338 Lapua · 1500m 级一枪致命',
     can(){ return G.mode === 'survival' && !INV.guns.includes('awm') && !player.dead; },
     buy(){ INV.guns.push('awm'); equipGun('awm'); } },
+  { id:'gun_shield', name:'BS-3A 防弹盾', price:600, desc:'正面免伤 · 举盾减速 · 左键盾击',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('shield') && !player.dead; },
+    buy(){ INV.guns.push('shield'); equipGun('shield'); } },
+  { id:'gun_flamer', name:'M2A1-7 喷火器', price:1600, desc:'长按喷射 · 持续灼烧 3s · 燃料 100',
+    can(){ return G.mode === 'survival' && !INV.guns.includes('flamer') && !player.dead; },
+    buy(){ INV.guns.push('flamer'); equipGun('flamer'); } },
+  { id:'ammo_FUEL', name:'喷火器燃料罐', price:320, desc:'M2A1-7 · 备用燃料 +100',
+    can(){ return INV.guns.includes('flamer') && !player.dead; },
+    buy(){ const w=WEAPONS[WIDX.flamer];
+           w.res=Math.min(w.maxReserve||600,(w.res|0)+100);
+           if(typeof updateAmmoUI==='function') updateAmmoUI();
+           toast('燃料 +100'); } },
   /* ---- 投掷物 ---- */
   { id:'nade_frag', name:'破片手雷', price:150, desc:'3.6s 引信 · 可掐雷 · 范围 6.4m',
     can(){ return G.mode !== 'pvp' && nadeCount('frag') < 4 && !player.dead; },
@@ -19688,7 +20097,9 @@ const AMMO = {
   '7.62x39': { name:'7.62×39 弹药盒', price:280, add:60, guns:['ak47'], icon:'#b46b3a',
             desc:'AK-47 专用 · 备弹 +60' },
   '.338': { name:'.338 Lapua 弹药盒', price:420, add:15, guns:['awm'], icon:'#8f6ab4',
-            desc:'AWM 专用 · 备弹 +15' }
+            desc:'AWM 专用 · 备弹 +15' },
+  'FUEL': { name:'喷火器燃料罐', price:320, add:100, guns:['flamer'], icon:'#e0832c',
+            desc:'M2A1-7 · 备用燃料 +100 · 燃料耗尽后可随时补充' }
 };
 
 const ARMOR_ITEMS = {
@@ -19801,9 +20212,31 @@ window.PARTS = PARTS = {
                mods:{ mag:1.33, reload:1.2 }, vis:{mg:'long'} },
   m39quick : { name:'7.62×39 快速弹匣', slot:'mag', guns:['ak47'], caliber:'7.62x39', price:400, tag:'弹匣',
                desc:'AK 换弹时间 -30%', acc:'#4d7f6a', mods:{ reload:0.70 }, vis:{mg:'quick'} },
-  m338ap   : { name:'.338 穿甲弹匣', slot:'mag', guns:['awm'], caliber:'.338', price:880, tag:'弹匣',
+  m338ap   : { name:'.338 穿甲弹匣', slot:'mag', guns:['awm'], price:880, tag:'弹匣',
                desc:'AWM 伤害 +8%，弹容 -20%', acc:'#7f4a4a',
-               mods:{ damage:1.08, mag:0.8 }, vis:{mg:'ap'} }
+               mods:{ damage:1.08, mag:0.8 }, vis:{mg:'ap'} },
+
+  /* ---- 特种装备专属配件 ----
+     槽位名独立于枪械槽（splate/sgrip/slamp/fnozzle/ftank/fgel），
+     partFits() 会先比对 GUN_SLOTS，因此普通枪装不上、这两件也装不了通用配件。 */
+  splate : { name:'陶瓷复合插板', slot:'splate', guns:['shield'], price:700, tag:'盾板',
+             desc:'盾击伤害 +40%，正面免疫角度 68° → 78°', acc:'#9aa4ac', forWhom:'shield',
+             mods:{}, vis:{} },
+  sgrip  : { name:'缓冲握把',     slot:'sgrip',  guns:['shield'], price:520, tag:'握把',
+             desc:'举盾移速 -55% → -38%，盾击失防 0.9s → 0.65s', acc:'#7a5f3a', forWhom:'shield',
+             mods:{}, vis:{} },
+  slamp  : { name:'LED 眩目灯组', slot:'slamp',  guns:['shield'], price:640, tag:'灯组',
+             desc:'盾击额外打断前方敌人射击 1.4s', acc:'#c9a24a', forWhom:'shield',
+             mods:{}, vis:{} },
+  fnozzle: { name:'加压喷嘴',     slot:'fnozzle',guns:['flamer'], price:900, tag:'喷嘴',
+             desc:'火焰射程 9m → 12m，锥角 16° → 19°', acc:'#b46b3a', forWhom:'flamer',
+             mods:{}, vis:{} },
+  ftank  : { name:'扩容燃料罐',   slot:'ftank',  guns:['flamer'], price:760, tag:'燃料',
+             desc:'燃料 100 → 150，移速 -8%', acc:'#8a7a45', forWhom:'flamer',
+             mods:{ mag:1.5, moveSpeed:0.92 }, vis:{} },
+  fgel   : { name:'稠化油料',     slot:'fgel',   guns:['flamer'], price:1100, tag:'油料',
+             desc:'离火后灼烧 8/s → 14/s（仍持续 3s）', acc:'#a8331f', forWhom:'flamer',
+             mods:{}, vis:{} }
 };
 
 /* 枪械槽位表：每把枪有哪些槽 */
@@ -19818,9 +20251,13 @@ const GUN_SLOTS = window.GUN_SLOTS = {
   glock17: ['muzzle','optic'],
   ak47   : ['muzzle','optic','grip','mag'],
   aa12   : ['muzzle','optic','feed'],
-  awm    : ['muzzle','optic','grip','mag']
+  awm    : ['muzzle','optic','grip','mag'],
+  shield : ['splate','sgrip','slamp'],
+  flamer : ['fnozzle','ftank','fgel']
 };
-const SLOT_CN = { muzzle:'枪口', optic:'瞄具', grip:'握把', mag:'弹匣', feed:'供弹' };
+const SLOT_CN = { muzzle:'枪口', optic:'瞄具', grip:'握把', mag:'弹匣', feed:'供弹',
+  splate:'盾板', sgrip:'缓冲握把', slamp:'灯组',
+  fnozzle:'喷嘴', ftank:'燃料罐', fgel:'油料' };
 
 /* 枪械口径（弹匣兼容性用） */
 const GUN_CAL = { rifle:'5.56', sniper:'5.56', shotgun:'12ga', pistol:'9mm',
@@ -19963,7 +20400,26 @@ const GUN_ART = {
          '<rect x="150" y="16" width="10" height="8" rx="1" fill="#4a5158"/>'+
          '<path d="M96 27 L90 40 M104 27 L110 40" stroke="#5a6158" stroke-width="1.6"/>'+
          '<path d="M48 27 Q48 35 56 35 L59 35 L59 27" fill="none" stroke="#8b939a" stroke-width="1.6"/>',
-    mz:{x:160,y:20}, op:{x:44,y:10}, mg:{x:50,y:27}, gr:{x:24,y:27} }
+    mz:{x:160,y:20}, op:{x:44,y:10}, mg:{x:50,y:27}, gr:{x:24,y:27} },
+
+  shield : { vb:'0 0 100 46',
+    gripDef:'', magDef:'',
+    body:'<path d="M26 3h48a7 7 0 0 1 7 7v20a11 11 0 0 1-20 6c-4-3-18-3-22 0a11 11 0 0 1-20-6V10a7 7 0 0 1 7-7z" fill="#2b3135" stroke="#8fa3ac" stroke-width="1.2"/>'+
+         '<rect x="36" y="7" width="28" height="7" rx="1" fill="#7fa4ad" opacity=".55"/>'+
+         '<text x="50" y="27" font-size="9" font-weight="bold" fill="#e9edef" text-anchor="middle" font-family="Arial">POLICE</text>'+
+         '<text x="50" y="35" font-size="4.6" fill="#9aa4ac" text-anchor="middle" font-family="Arial">BALLISTIC SHIELD  III-A</text>',
+    mz:{x:50,y:20}, op:{x:50,y:7}, mg:{x:50,y:30}, gr:{x:50,y:38} },
+
+  flamer : { vb:'0 0 150 46',
+    gripDef:'<path d="M40 26 L50 26 L47 41 L38 41 Z" fill="#7b838a" stroke="#262c31" stroke-width=".9"/>',
+    magDef :'<rect x="6" y="6" width="13" height="28" rx="3" fill="#4d5540" stroke="#262c31" stroke-width=".9"/><rect x="21" y="6" width="13" height="28" rx="3" fill="#4d5540" stroke="#262c31" stroke-width=".9"/>',
+    body:'<rect x="6" y="9" width="10" height="3" fill="#c9bd94"/><rect x="21" y="9" width="10" height="3" fill="#c9bd94"/>'+
+         '<path d="M34 18h60l4-3v9l-4-3H34z" fill="#7c848b" stroke="#262c31" stroke-width=".8"/>'+
+         '<rect x="94" y="16" width="20" height="7" rx="1" fill="#a8844c" stroke="#262c31" stroke-width=".8"/>'+
+         '<rect x="114" y="15" width="10" height="9" rx="2" fill="#3a4046"/>'+
+         '<path d="M124 19.5c12-6 16-1 12 2-2 2-6 2-9 1 4 3 5 5 0 5-6 0-8-4-3-8z" fill="#ff8a2c" opacity=".9"/>'+
+         '<path d="M36 24 Q36 33 44 33 L48 33 L48 24" fill="none" stroke="#8b939a" stroke-width="1.4"/>',
+    mz:{x:124,y:20}, op:{x:60,y:15}, mg:{x:14,y:20}, gr:{x:44,y:27} }
 };
 
 /* ============================ 状态 ============================ */
@@ -20017,7 +20473,13 @@ function partIcon(id, size){
     optic :'<path d="M6 20 L6 9 L22 9 L22 20" stroke="'+a+'" stroke-width="2.4" fill="none"/><circle cx="14" cy="14" r="3.4" fill="'+a+'"/><rect x="2" y="18" width="24" height="2.6" fill="#5b6269"/>',
     grip  :'<path d="M9 4 L15 4 L15 14 L21 22 L15 22 L9 13 Z" fill="'+a+'"/>',
     mag   :'<path d="M8 4 L18 4 L17 23 L11 23 Z" fill="'+a+'"/><rect x="8" y="8" width="10" height="2" fill="#2f3438"/>',
-    feed  :'<circle cx="8" cy="8" r="5" fill="'+a+'"/><circle cx="19" cy="16" r="5" fill="'+a+'"/>'
+    feed  :'<circle cx="8" cy="8" r="5" fill="'+a+'"/><circle cx="19" cy="16" r="5" fill="'+a+'"/>',
+    splate:'<path d="M14 3 L24 7 V15 C24 21 20 24 14 26 C8 24 4 21 4 15 V7 Z" fill="'+a+'" stroke="#2f3438" stroke-width="1.4"/>',
+    sgrip :'<rect x="10" y="4" width="8" height="20" rx="3" fill="'+a+'"/><path d="M10 10h8M10 15h8" stroke="#2f3438" stroke-width="1.2"/>',
+    slamp :'<circle cx="8" cy="14" r="4" fill="'+a+'"/><circle cx="20" cy="14" r="4" fill="'+a+'"/><path d="M2 8L8 14M26 8L20 14" stroke="'+a+'" stroke-width="1.4"/>',
+    fnozzle:'<path d="M4 11 L18 8 L24 14 L18 20 L4 17 Z" fill="'+a+'"/><rect x="2" y="11" width="4" height="6" fill="#5b6269"/>',
+    ftank :'<rect x="6" y="4" width="7" height="20" rx="3" fill="'+a+'"/><rect x="15" y="4" width="7" height="20" rx="3" fill="'+a+'"/>',
+    fgel  :'<path d="M14 3 C19 9 22 13 22 17 A8 8 0 0 1 6 17 C6 13 9 9 14 3 Z" fill="'+a+'"/>'
   }[p.slot] || '';
   return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 28 28" fill="none">'+inner+'</svg>';
 }
@@ -20182,6 +20644,15 @@ function applyMods(gunId){
 function gunStatRows(gunId){
   const idx=WIDX[gunId]; if(idx===undefined) return [];
   const w=WEAPONS[idx], b=w.__base; if(!b) return [];
+  if(w.kind==='shield' || w.kind==='flamer'){
+    return [
+      { label:w.kind==='shield'?'盾击伤害':'火焰 DPS', base:b.damage, now:w.damage, digits:0, dir:1 },
+      { label:w.kind==='shield'?'盾击范围':'火焰射程', base:w.kind==='shield'?2.8:9, now:w.range, digits:1, dir:1 },
+      { label:w.kind==='shield'?'盾击冷却':'燃料容量', base:w.kind==='shield'?0.85:100,
+        now:w.kind==='shield'?0.85:w.magSize, digits:w.kind==='shield'?2:0, dir:w.kind==='shield'?-1:1 },
+      { label:w.kind==='shield'?'举盾时间':'换罐时间', base:b.reloadTime, now:w.reloadTime, digits:2, dir:-1 }
+    ];
+  }
   const defs=[
     ['垂直后坐力', b.recoilKick, w.recoilKick, 3, -1],
     ['水平后坐力', b.recoilRot,  w.recoilRot,  3, -1],
@@ -20213,11 +20684,14 @@ function hbSlotInner(kind){
     const i = kind==='gun0'?0:1, id = slotGunId(i);
     if(!id) return { empty:true, html:'<div class="hb-empty-t">空槽位</div>' };
     const idx = WIDX[id], w = WEAPONS[idx];
+    const ammo = w.kind==='shield' ? '防御 / 盾击'
+      : w.kind==='flamer' ? ('燃料 '+Math.ceil(w.mag))
+      : ((pvpInfAmmo&&pvpInfAmmo()?'∞':w.mag)+' / '+
+         (pvpInfAmmo&&pvpInfAmmo()?'∞':w.res));
     return { empty:false,
       html:'<div class="hb-nm">'+esc(WSHORT?WSHORT[id]:id)+'</div>'+
            '<div class="hb-ico">'+gunSVG(id, 118)+'</div>'+
-           '<div class="hb-am">'+(pvpInfAmmo&&pvpInfAmmo()?'∞':w.mag)+' / '+
-             (pvpInfAmmo&&pvpInfAmmo()?'∞':w.res)+'</div>' };
+           '<div class="hb-am">'+ammo+'</div>' };
   }
   if(kind==='nade'){
     const id = nadeId();
@@ -20373,7 +20847,7 @@ const SHOP_TABS = [
   { id:'all',   name:'全部',   en:'ALL' },
   { id:'prop',  name:'道具',   en:'GEAR' },
   { id:'nade',  name:'投掷物', en:'THROW' },
-  { id:'gun',   name:'枪械',   en:'WEAPON' },
+  { id:'gun',   name:'装备',   en:'EQUIP' },
   { id:'armor', name:'防具',   en:'ARMOR' },
   { id:'ammo',  name:'子弹',   en:'AMMO' },
   { id:'part',  name:'配件',   en:'PARTS' }
@@ -20383,7 +20857,9 @@ const PART_TABS = [
   { id:'muzzle',name:'枪口' },
   { id:'optic', name:'瞄具' },
   { id:'grip',  name:'握把' },
-  { id:'mag',   name:'弹匣' }
+  { id:'mag',   name:'弹匣' },
+  { id:'shield',name:'盾牌' },
+  { id:'flamer',name:'喷火' }
 ];
 
 /* 分类图标：16×16，靠 currentColor 跟着选中态变色，不额外加载资源。
@@ -20470,7 +20946,29 @@ function shopItems(){
       why(){ return INV.guns.includes(id) ? '已拥有' : (G.mode!=='survival'?'本模式已配发':null); },
       buy(){ if(!INV.guns.includes(id)) INV.guns.push(id); autoEquip('gun', id); } });
   }
+  /* 喷火器归入「装备」栏，与普通枪械同组 */
+  out.push({ group:'gun', id:'gun_flamer', name:'M2A1-7 喷火器', price:1600,
+    desc:'长按喷射 9m 火焰 · 持续伤害 · 离火后灼烧 3s · 燃料 100',
+    icon:gunSVG('flamer',96), cat:'gun', item:'flamer',
+    can(){ return G.mode!=='pvp' && !INV.guns.includes('flamer') && !player.dead; },
+    why(){ return INV.guns.includes('flamer') ? '已拥有' : (G.mode==='pvp'?'死斗不可用':null); },
+    buy(){
+      if(!INV.guns.includes('flamer')) INV.guns.push('flamer');
+      if(window.EQUIP && !window.EQUIP.canEquip('flamer',true)) return;
+      if(typeof equipGun==='function') equipGun('flamer'); else autoEquip('gun','flamer');
+    } });
   /* 防具 */
+  /* 防弹盾归入「防具」栏 */
+  out.push({ group:'armor', id:'gun_shield', name:'BS-3A 防弹盾', price:600,
+    desc:'举盾正面免伤 · 移速 -55% · 左键盾击（击后 0.9s 失防）',
+    icon:gunSVG('shield',96), cat:'armor', item:'shield',
+    can(){ return G.mode!=='pvp' && !INV.guns.includes('shield') && !player.dead; },
+    why(){ return INV.guns.includes('shield') ? '已拥有' : (G.mode==='pvp'?'死斗不可用':null); },
+    buy(){
+      if(!INV.guns.includes('shield')) INV.guns.push('shield');
+      if(window.EQUIP && !window.EQUIP.canEquip('shield',true)) return;
+      if(typeof equipGun==='function') equipGun('shield'); else autoEquip('gun','shield');
+    } });
   out.push({ group:'armor', id:'armorup', name:'护甲升级', price:ARMOR_ITEMS.armorup.price,
     desc:ARMOR_ITEMS.armorup.desc, icon:armorIcon('armorup', 30), cat:'armor', item:'armorup',
     can(){ return (player.armorLv|0)<3 && !player.dead; },
@@ -20514,14 +21012,19 @@ function shopItems(){
           w.res = Math.min(cap, w.res + a.add);
           got += w.res-before;
         });
-        toast(got>0 ? ('补充备弹 +'+got) : '备弹已满');
+        toast(got>0 ? ('补充'+(cal==='FUEL'?'燃料':'备弹')+' +'+got) : '备弹已满');
+        if(cal==='FUEL'){
+          const fw=WEAPONS[player.weapon];
+          if(fw && fw.kind==='flamer' && fw.mag<=0 && fw.res>0 &&
+             player.reloadT<=0 && typeof startReload==='function') startReload();
+        }
       } });
   }
   /* 配件 */
   for(const id in PARTS){
     const p = PARTS[id];
     out.push({ group:'part', id:'part_'+id, name:p.name, desc:p.desc, price:p.price,
-      icon:partIcon(id, 28), cat:'part', item:id, slot:p.slot,
+      icon:partIcon(id, 28), cat:'part', item:id, slot:p.slot, forWhom:p.forWhom||null,
       can(){ return partCount(id)<2 && !player.dead; },
       why(){ return partCount(id)>=2 ? '最多持有 2 件' : null; },
       buy(){ INV.parts[id]=(INV.parts[id]||0)+1; toast('配件已存入背包，请在改装界面安装'); } });
@@ -20564,7 +21067,7 @@ function renderShop(){
     if(shopTab==='all') return true;
     if(shopTab==='part'){
       if(it.cat!=='part') return false;
-      return shopPartTab==='all' || it.slot===shopPartTab;
+      return shopPartTab==='all' || it.slot===shopPartTab || it.forWhom===shopPartTab;
     }
     return it.group===shopTab;
   });
@@ -20580,7 +21083,7 @@ function renderShop(){
     nameEl.textContent = nm + ' / ' + ((t&&t.en)||'ALL');
   }
   if(cntEl) cntEl.textContent = items.length + ' 项';
-  const SEC_CN = { prop:'道具', nade:'投掷物', gun:'枪械', armor:'防具', ammo:'子弹', part:'配件' };
+  const SEC_CN = { prop:'道具', nade:'投掷物', gun:'装备', armor:'防具', ammo:'子弹', part:'配件' };
   let lastSec = null, secIdx = 0;
   items.forEach(it=>{
     if(shopTab==='all' && it.group!==lastSec){
@@ -20652,7 +21155,9 @@ function bagEntries(){
     const installed = (INV.mods && INV.mods[id]) || {};
     const mods = Object.keys(installed).map(s=>PARTS[installed[s]]).filter(Boolean);
     out.push({ cat:'gun', key:id, id:id, name:w.name, qty:null, icon:gunSVG(id, 84),
-      desc:w.name+' · '+(WSHORT?WSHORT[id]:id)+' · 弹药 '+w.magSize+' 发',
+      desc: w.kind==='shield' ? (w.name+' · 举盾免伤 / 盾击 · 与喷火器互斥')
+          : w.kind==='flamer' ? (w.name+' · 燃料 '+w.magSize+' · 灼烧 3s')
+          : (w.name+' · '+(WSHORT?WSHORT[id]:id)+' · 弹药 '+w.magSize+' 发'),
       tag: inSlot>=0 ? ('槽 '+(inSlot+1)) : null,
       ok: mods.length? ('已改装：'+mods.map(m=>m.name).join('、')) : null });
   });
@@ -28013,5 +28518,441 @@ T4.map4={
 })();
 </script>
 
+<script>
+/* =========================================================================
+   25. 特种装备玩法层 —— BS-3A 防弹盾 / M2A1-7 喷火器
+   -------------------------------------------------------------------------
+   · 盾：切到即自动举起，正面（水平 ±68°）子弹与爆炸伤害完全免疫；
+          移速 -55%，禁止开镜 / 冲刺 / 跳跃 / 滑铲 / 投掷 / 换弹 / 用药；
+          点击开火 = 盾击（前方 2.8m / ±55° 扇形伤害），随后 0.9s 失去防护。
+   · 喷火器：长按开火持续喷射 9m 锥形火焰，范围内敌人持续受伤；
+             离开火焰后仍灼烧 3s（少量伤害）。燃料 100，长按每秒耗 14，
+             可换罐；喷射时移速 -22%、禁止开镜与冲刺。
+   · 二者互斥：两个快捷槽里一次只能带一件特种装备。
+   · 所有参数从 WEAPONS / INV.mods 读取，配件即时生效。
+   ========================================================================= */
+(function(){
+'use strict';
+const T = THREE;
+
+const CFG = {
+  shieldSpeed:0.45, shieldSpeedGrip:0.62,
+  arc:Math.cos(68*Math.PI/180), arcPlate:Math.cos(78*Math.PI/180),
+  bashRange:2.8, bashCos:Math.cos(55*Math.PI/180), bashCd:0.85,
+  expose:0.90, exposeGrip:0.65, bashAnim:0.26,
+  flameSpeed:0.78, flameRange:9, flameRangeNozzle:12,
+  flameCos:Math.cos(16*Math.PI/180), flameCosNozzle:Math.cos(19*Math.PI/180),
+  flameTick:0.10, burnTime:3, burnDps:8, burnDpsGel:14
+};
+const S = {
+  shieldUp:false, bashCd:0, expose:0, bashAnim:0, blocked:0,
+  spraying:false, flameTick:0, t:0, lastKind:null, slotsTick:0,
+  hud:null, hudTxt:'', toastEl:null, toastT:0, audio:null
+};
+const W = ()=>WEAPONS[player.weapon];
+function mods(id){ try{ return (INV.mods && INV.mods[id]) || {}; }catch(_){ return {}; } }
+function has(id,part){ const m=mods(id); for(const k in m) if(m[k]===part) return true; return false; }
+
+const _fw=new T.Vector3(), _rt=new T.Vector3(), _up=new T.Vector3(0,1,0), _uv=new T.Vector3();
+const _to=new T.Vector3(), _d=new T.Vector3(), _p=new T.Vector3();
+const _ray=new T.Raycaster();
+function eyeBasis(){
+  camera.getWorldDirection(_fw);
+  _rt.crossVectors(_fw,_up).normalize();
+  _uv.crossVectors(_rt,_fw).normalize();
+}
+function clearLine(dir,dist){
+  _ray.set(camera.position,dir); _ray.far=Math.max(0.15,dist-0.45);
+  try{ return worldHits(_ray).length===0; }catch(_){ return true; }
+}
+
+/* ------------------------------------------------------------ 音频 */
+/* 独立的低音量噪声环，模拟喷火器的持续呼啸；不改动游戏自带的 SFX 模块。 */
+function ensureAudio(){
+  if(S.audio) return true;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return false;
+    const ac=new AC(), len=ac.sampleRate*2;
+    const buf=ac.createBuffer(1,len,ac.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    const src=ac.createBufferSource(); src.buffer=buf; src.loop=true;
+    const flt=ac.createBiquadFilter(); flt.type='lowpass'; flt.frequency.value=820;
+    const g=ac.createGain(); g.gain.value=0;
+    src.connect(flt); flt.connect(g); g.connect(ac.destination); src.start();
+    S.audio={ac:ac,gain:g,flt:flt};
+    return true;
+  }catch(_){ return false; }
+}
+function flameSound(on){
+  const a=S.audio; if(!a) return;
+  try{
+    if(!on){ a.gain.gain.setTargetAtTime(0,a.ac.currentTime,0.045); return; }
+    if(a.ac.state==='suspended') a.ac.resume().catch(()=>{});
+    a.gain.gain.setTargetAtTime(0.075,a.ac.currentTime,0.035);
+    a.flt.frequency.setTargetAtTime(700+Math.random()*320,a.ac.currentTime,0.12);
+  }catch(_){}
+}
+document.addEventListener('pointerdown',()=>{
+  if(!ensureAudio()) return;
+  try{ if(S.audio.ac.state==='suspended') S.audio.ac.resume().catch(()=>{}); }catch(_){}
+},{passive:true});
+
+/* ------------------------------------------------------------ HUD */
+function ensureHud(){
+  if(S.hud) return;
+  const st=document.createElement('style');
+  st.textContent=
+    '#equipHud{position:absolute;left:50%;bottom:15.5%;transform:translateX(-50%);z-index:6;'+
+    'pointer-events:none;white-space:nowrap;padding:6px 14px;border-radius:3px;opacity:0;'+
+    'font:600 11px/1.4 ui-monospace,Consolas,monospace;letter-spacing:.13em;color:#dfe6ec;'+
+    'background:rgba(8,12,15,.74);border:1px solid rgba(223,230,236,.18);'+
+    'text-shadow:0 1px 4px #000;transition:opacity .18s ease}'+
+    '#equipHud.shield{border-color:rgba(140,190,220,.5);color:#c3e2f4}'+
+    '#equipHud.flamer{border-color:rgba(255,140,60,.55);color:#ffd0a0}'+
+    '#equipHud.warn{border-color:rgba(255,70,60,.65);color:#ff9c90}'+
+    '#equipToast{position:absolute;left:50%;top:11%;transform:translateX(-50%);z-index:8;'+
+    'pointer-events:none;padding:8px 16px;border-radius:3px;opacity:0;transition:opacity .2s ease;'+
+    'font:600 12px/1.4 ui-monospace,Consolas,monospace;letter-spacing:.08em;color:#ffe0b0;'+
+    'background:rgba(12,14,16,.9);border:1px solid rgba(255,179,64,.45);white-space:nowrap}'+
+    '#equipToast.on{opacity:1}';
+  document.head.appendChild(st);
+  S.hud=document.createElement('div'); S.hud.id='equipHud'; document.body.appendChild(S.hud);
+  S.toastEl=document.createElement('div'); S.toastEl.id='equipToast'; document.body.appendChild(S.toastEl);
+}
+function equipToast(msg){
+  ensureHud(); if(!S.toastEl) return;
+  S.toastEl.textContent=msg; S.toastEl.classList.add('on');
+  clearTimeout(S.toastT);
+  S.toastT=setTimeout(()=>{ if(S.toastEl) S.toastEl.classList.remove('on'); },1900);
+}
+function updateHud(w){
+  ensureHud(); if(!S.hud) return;
+  let txt='', cls='';
+  if(w && w.kind==='shield'){
+    cls = S.expose>0 ? 'warn' : 'shield';
+    txt = S.expose>0 ? '盾 · 防护失效 '+S.expose.toFixed(1)+'s'
+        : S.bashCd>0 ? '盾 · 盾击冷却 '+S.bashCd.toFixed(1)+'s · 正面免疫'
+        : '盾 · 正面免疫 · 移速 -'+Math.round((1-(has('shield','sgrip')?CFG.shieldSpeedGrip:CFG.shieldSpeed))*100)+'% · 左键盾击';
+  } else if(w && w.kind==='flamer'){
+    cls='flamer';
+    txt = player.reloadT>0 ? '喷火 · 换罐中 '+player.reloadT.toFixed(1)+'s'
+        : S.spraying ? '喷火 · 喷射中 · 燃料 '+Math.ceil(w.mag)
+        : '喷火 · 燃料 '+Math.ceil(w.mag)+' · 长按开火 / R 换罐 · 灼烧 3s';
+  }
+  if(S.hud.className!==cls) S.hud.className=cls;
+  if(txt!==S.hudTxt){ S.hudTxt=txt; S.hud.textContent=txt; S.hud.style.opacity=txt?'1':'0'; }
+}
+
+/* ------------------------------------------------------- 盾：防御 */
+function shieldRaised(){ return S.shieldUp; }
+function blockDamage(amount,fromPos){
+  if(!S.shieldUp || S.expose>0 || !fromPos || !isShield()) return false;
+  eyeBasis();
+  _to.set(fromPos.x-camera.position.x,0,fromPos.z-camera.position.z);
+  if(_to.lengthSq()<0.04) return false;
+  _to.normalize();
+  const hl=Math.hypot(_fw.x,_fw.z)||1;
+  const cos=has('shield','splate')?CFG.arcPlate:CFG.arc;
+  if((_to.x*_fw.x+_to.z*_fw.z)/hl < cos) return false;
+  S.blocked=0.25;
+  /* 前方 0.6m 处溅出一簇金属火花，给「挡下了」一个明确的反馈 */
+  for(let i=0;i<10;i++){
+    spawnParticle(PS_SPARK,
+      camera.position.x+_fw.x*0.62+rand(-0.09,0.09),
+      camera.position.y+_fw.y*0.62-0.10+rand(-0.09,0.09),
+      camera.position.z+_fw.z*0.62+rand(-0.09,0.09),
+      rand(-2.2,2.2),rand(0.2,2.6),rand(-2.2,2.2),
+      {color:[1,0.78,0.34],size:0.030,life:0.20+Math.random()*0.16,drag:3.4,grav:-7,alpha:1});
+  }
+  try{ SFX.impactWall(clamp((fromPos.x-camera.position.x)/8,-1,1),2.4); }catch(_){}
+  return true;
+}
+
+/* ------------------------------------------------------- 盾：盾击 */
+function shieldBash(){
+  const w=W(); if(!w||w.kind!=='shield') return false;
+  if(S.bashCd>0 || player.switching>0 || player.reloadT>0 || player.dead) return true;
+  S.bashCd=CFG.bashCd;
+  S.expose=has('shield','sgrip')?CFG.exposeGrip:CFG.expose;
+  S.bashAnim=CFG.bashAnim;
+  const dmg=w.damage*(has('shield','splate')?1.4:1);
+  eyeBasis();
+  let hit=false, killed=false;
+  for(const e of enemies){
+    if(e.dead||e.gone) continue;
+    _p.copy(e.obj.position); _p.y+=1.0;
+    _d.subVectors(_p,camera.position);
+    const dist=_d.length(); if(dist>CFG.bashRange||dist<0.01) continue;
+    _d.divideScalar(dist);
+    if(_d.dot(_fw)<CFG.bashCos) continue;
+    if(!clearLine(_d,dist)) continue;
+    hit=true;
+    e.flinch=1;
+    if(has('shield','slamp')) e.reactT=Math.max(e.reactT||0,1.4);
+    if(!NET.guest){
+      if(damageEnemy(e,dmg,false,_d,_p)) killed=true;
+    }
+    for(let i=0;i<6;i++)
+      spawnParticle(PS_SPARK,_p.x,_p.y,_p.z,rand(-2,2),rand(0,2.4),rand(-2,2),
+        {color:[1,0.82,0.45],size:0.032,life:0.22,drag:3,grav:-6,alpha:1});
+  }
+  try{ SFX.impactWall(0,1.4); SFX.pumpSound(false); }catch(_){}
+  if(hit && typeof showHitmark==='function') showHitmark(killed);
+  player.shake=Math.min(1.2,player.shake+0.18);
+  if(typeof updateAmmoUI==='function') updateAmmoUI();
+  return true;
+}
+
+/* ------------------------------------------------- 喷火：持续喷射 */
+function spawnFlameParticles(dt){
+  eyeBasis();
+  const n=Math.max(2,Math.min(7,Math.round(dt*110)));
+  for(let i=0;i<n;i++){
+    const sp=9+Math.random()*5, ox=(Math.random()-0.5)*0.13, oy=(Math.random()-0.5)*0.13;
+    const x=camera.position.x+_fw.x*0.58+_rt.x*(0.13+ox)+_uv.x*(-0.10+oy);
+    const y=camera.position.y+_fw.y*0.58+_rt.y*ox+_uv.y*(-0.10+oy);
+    const z=camera.position.z+_fw.z*0.58+_rt.z*(0.13+ox)+_uv.z*(-0.10+oy);
+    const r=Math.random();
+    const c=r<0.42?[1,0.93,0.58]:(r<0.78?[1,0.46,0.10]:[0.86,0.16,0.03]);
+    spawnParticle(PS_SOFT,x,y,z,
+      _fw.x*sp+rand(-1.2,1.2),_fw.y*sp+rand(-0.3,1.0)+0.85,_fw.z*sp+rand(-1.2,1.2),
+      {color:c,size:0.18+Math.random()*0.24,grow:0.55,life:0.28+Math.random()*0.20,
+       drag:1.7,grav:1.6,alpha:0.9});
+  }
+}
+function flameDamage(w){
+  const nozzle=has('flamer','fnozzle');
+  const range=nozzle?CFG.flameRangeNozzle:CFG.flameRange;
+  const cos=nozzle?CFG.flameCosNozzle:CFG.flameCos;
+  const burnDps=has('flamer','fgel')?CFG.burnDpsGel:CFG.burnDps;
+  const now=perfNow;
+  eyeBasis();
+  for(const e of enemies){
+    if(e.dead||e.gone) continue;
+    _p.copy(e.obj.position); _p.y+=1.0;
+    _d.subVectors(_p,camera.position);
+    const dist=_d.length(); if(dist>range||dist<0.01) continue;
+    _d.divideScalar(dist);
+    if(_d.dot(_fw)<cos) continue;
+    if(!clearLine(_d,dist)) continue;
+    /* 在火焰里：灼烧计时一直刷新为 3s；真正开始掉血是离开之后的 3 秒 */
+    e.inFlameUntil=now+0.16;
+    e.burnLeft=CFG.burnTime; e.burnDps=burnDps; e.burnAcc=0; e.burnTotal=0;
+    if(!NET.guest) damageEnemy(e,w.damage*CFG.flameTick,false,_d,_p);
+    if(Math.random()<0.55)
+      spawnParticle(PS_SOFT,_p.x+rand(-0.25,0.25),_p.y+rand(-0.3,0.4),_p.z+rand(-0.25,0.25),
+        rand(-0.5,0.5),rand(0.6,1.6),rand(-0.5,0.5),
+        {color:[1,0.5,0.10],size:0.16,grow:0.32,life:0.35,drag:1.6,grav:1.4,alpha:0.8});
+  }
+  if(typeof alertToGunfire==='function' && Math.random()<0.30) alertToGunfire(26);
+}
+function showCone(w){
+  try{
+    if(!w.vm) return;
+    for(const c of [w.vm.flameCone,w.vm.flameCore]) if(c){
+      c.visible=true;
+      c.material.uniforms.uTime.value=S.t;
+      c.material.uniforms.uIntensity.value=Math.min(1,c.material.uniforms.uIntensity.value+0.28);
+    }
+  }catch(_){}
+}
+function flameTick(dt,w){
+  const want=(player.triggerHeld||player.clickBuf>0)&&!player.dead&&!player.nadeMode;
+  const busy=player.switching>0||player.reloadT>0;
+  const can=want&&!busy&&w.mag>0;
+  S.spraying=can;
+  if(can){
+    player.clickBuf=0;
+    spawnFlameParticles(dt);
+    /* 燃料按 0.1s 的伤害节拍扣整数（10 单位/秒），HUD 不会跳小数 */
+    S.flameTick-=dt;
+    if(S.flameTick<=0){
+      S.flameTick=CFG.flameTick;
+      w.mag=Math.max(0,w.mag-1);
+      flameDamage(w);
+      if(typeof updateAmmoUI==='function') updateAmmoUI();
+    }
+    flameSound(true);
+    showCone(w);
+    if(w.mag<=0&&w.res>0&&typeof startReload==='function') startReload();
+  }else{
+    flameSound(false);
+    if(want&&!busy&&w.mag<=0&&w.res>0&&player.reloadT<=0&&typeof startReload==='function') startReload();
+    if(want&&w.mag<=0&&w.res<=0&&player.triggerReleased){
+      try{ SFX.dryFire(); }catch(_){}
+      player.triggerReleased=false;
+    }
+  }
+  return can;
+}
+
+/* ------------------------------------------------------- 灼烧结算 */
+function burnTick(dt){
+  const now=perfNow;
+  for(const e of enemies){
+    if(e.dead||e.gone) continue;
+    if(now<(e.inFlameUntil||0)){ e.burnLeft=CFG.burnTime; e.burnAcc=0; e.burnTotal=0; continue; }
+    if(!(e.burnLeft>0)) continue;
+    e.burnLeft-=dt;
+    e.burnAcc=(e.burnAcc||0)+dt;
+    if(e.burnAcc>=0.25){
+      /* 最后一小段按剩余时长截断，3 秒总伤害严格等于 dps × 3 */
+      const step=Math.min(e.burnAcc,Math.max(0,CFG.burnTime-(e.burnTotal||0)));
+      e.burnTotal=(e.burnTotal||0)+step;
+      e.burnAcc=0;
+      const dmg=(e.burnDps||CFG.burnDps)*step;
+      if(!NET.guest && dmg>0){
+        _p.copy(e.obj.position); _p.y+=1.0;
+        damageEnemy(e,dmg,false,_up,_p);
+      }
+      spawnParticle(PS_SOFT,
+        e.obj.position.x+rand(-0.20,0.20),e.obj.position.y+0.9+Math.random()*0.7,
+        e.obj.position.z+rand(-0.20,0.20),
+        rand(-0.3,0.3),rand(0.5,1.2),rand(-0.3,0.3),
+        {color:[1,0.42,0.08],size:0.075,grow:0.12,life:0.45,drag:1.4,grav:1.0,alpha:0.75});
+    }
+    if(e.burnLeft<=0){ e.burnLeft=0; e.burnDps=0; }
+  }
+}
+
+/* --------------------------------------------------- 模型每帧动画 */
+function hideCone(){
+  try{
+    const fl=WEAPONS[WIDX.flamer];
+    if(fl&&fl.vm){
+      for(const c of [fl.vm.flameCone,fl.vm.flameCore]) if(c){
+        c.visible=false; c.material.uniforms.uIntensity.value=0;
+      }
+    }
+  }catch(_){}
+}
+function updateModels(dt,w){
+  try{
+    const sh=WEAPONS[WIDX.shield];
+    if(sh&&sh.vm&&sh.vm.group){
+      const g=sh.vm.group, k=S.bashAnim/CFG.bashAnim;
+      g.position.z=k*0.22;
+      g.position.y=(S.expose>0?-0.10:0)-(S.blocked>0?0.014:0);
+      g.rotation.x=-k*0.22+(S.expose>0?0.13:0);
+      g.rotation.z=(S.expose>0?0.06:0)+(S.blocked>0?-0.025:0);
+    }
+  }catch(_){}
+  try{
+    const fl=WEAPONS[WIDX.flamer];
+    if(fl&&fl.vm){
+      const on=S.spraying&&!G.paused&&!G.over;
+      for(const c of [fl.vm.flameCone,fl.vm.flameCore]) if(c){
+        c.visible=on;
+        if(on){
+          c.material.uniforms.uTime.value=S.t;
+          c.material.uniforms.uIntensity.value=Math.min(1,c.material.uniforms.uIntensity.value+dt*9);
+          c.scale.y=0.94+Math.sin(S.t*27+c.id)*0.07;
+          c.scale.x=c.scale.z=0.92+Math.sin(S.t*19)*0.10;
+        }
+      }
+    }
+  }catch(_){}
+}
+
+/* --------------------------------------------------------- 状态同步 */
+function isSpecialHeld(){ const w=W(); return !!(w&&w.kind); }
+function isShield(){ const w=W(); return !!(w&&w.kind==='shield'); }
+function speedMul(w){
+  if(!w) return 1;
+  if(w.kind==='shield') return S.shieldUp?(has('shield','sgrip')?CFG.shieldSpeedGrip:CFG.shieldSpeed):1;
+  if(w.kind==='flamer') return S.spraying?CFG.flameSpeed:1;
+  return 1;
+}
+function onSwitchStart(id){
+  S.shieldUp=false; S.expose=0; S.spraying=false; S.bashAnim=0;
+  flameSound(false); hideCone();
+}
+function onEquip(id){
+  if(id==='shield') equipToast('BS-3A 已举起 · 正面免伤 · 左键盾击');
+  else if(id==='flamer') equipToast('M2A1-7 就绪 · 长按开火喷射 · R 换罐');
+}
+function syncHeld(w){
+  const up=!!(w&&w.kind==='shield'&&!player.nadeMode&&player.switching<=0&&!player.dead);
+  if(up!==S.shieldUp){ S.shieldUp=up; if(!up) S.expose=0; }
+  if(w&&w.kind!=='flamer'&&S.spraying){ S.spraying=false; flameSound(false); hideCone(); }
+  const k=(w&&w.kind)||null;
+  if(k!==S.lastKind){ S.lastKind=k; if(typeof updateAmmoUI==='function') updateAmmoUI(); }
+}
+function canEquip(id,showMsg){
+  const other=id==='shield'?'flamer':'shield';
+  if(player.slots.indexOf(other)>=0){
+    if(showMsg) equipToast('盾与喷火器不能同时携带 · 请先卸下'+(other==='shield'?'防弹盾':'喷火器'));
+    return false;
+  }
+  return true;
+}
+function checkSlots(dt){
+  S.slotsTick-=dt; if(S.slotsTick>0) return; S.slotsTick=0.4;
+  const a=player.slots.indexOf('shield'), b=player.slots.indexOf('flamer');
+  if(a<0||b<0) return;
+  const cur=W()&&W().id, drop=cur==='shield'?'flamer':'shield';
+  const di=player.slots.indexOf(drop);
+  if(di>=0){
+    player.slots[di]=null;
+    equipToast('特种装备一次只能带一件 · 已卸下'+(drop==='shield'?'防弹盾':'喷火器'));
+  }
+  if(typeof updateAmmoUI==='function') updateAmmoUI();
+  if(window.renderHotbar) try{ window.renderHotbar(); }catch(_){}
+  if(window.renderBag)    try{ window.renderBag(); }catch(_){}
+}
+function update(dt){
+  S.t+=dt;
+  const w=W();
+  syncHeld(w);
+  if(!G.paused){
+    S.bashCd=Math.max(0,S.bashCd-dt);
+    S.expose=Math.max(0,S.expose-dt);
+    S.bashAnim=Math.max(0,S.bashAnim-dt);
+    S.blocked=Math.max(0,S.blocked-dt);
+    burnTick(dt);
+  }
+  if(S.shieldUp){
+    if(player.medUse) player.medUse=null;
+    if(player.nadeMode){ try{ setNadeMode(false); }catch(_){} }
+    if(player.ads){ try{ setADS(false); }catch(_){} }
+  }
+  updateModels(dt,w);
+  updateHud(w);
+  checkSlots(dt);
+}
+function reset(){
+  S.shieldUp=false; S.bashCd=0; S.expose=0; S.bashAnim=0; S.blocked=0;
+  S.spraying=false; S.lastKind=null; S.hudTxt='';
+  flameSound(false); hideCone();
+  try{ for(const e of enemies){ e.burnLeft=0; e.inFlameUntil=0; e.burnDps=0; e.burnAcc=0; } }catch(_){}
+  if(S.hud){ S.hud.textContent=''; S.hud.style.opacity='0'; }
+  if(S.toastEl) S.toastEl.classList.remove('on');
+}
+
+/* 购买 / 背包装备入口统一走互斥检查（拖拽直接改槽位的情况由 checkSlots 兜底） */
+try{
+  if(typeof equipGun==='function'){
+    const _origEquip=equipGun;
+    equipGun=function(id){
+      if((id==='shield'||id==='flamer')&&!canEquip(id,true)){
+        try{ SFX.deny(); }catch(_){}
+        return false;
+      }
+      return _origEquip(id);
+    };
+  }
+}catch(_){}
+
+window.EQUIP={
+  update:update, onSwitchStart:onSwitchStart, onEquip:onEquip, reset:reset,
+  shieldBash:shieldBash, flameTick:flameTick, blockDamage:blockDamage,
+  speedMul:speedMul, isSpecialHeld:isSpecialHeld, shieldRaised:shieldRaised,
+  blocksJump:shieldRaised, canEquip:canEquip,
+  shieldStatusText:()=>'正面免伤 · 禁止开镜/冲刺/投掷',
+  state:S
+};
+})();
+
+</script>
 </body>
 </html>
